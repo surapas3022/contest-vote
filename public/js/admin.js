@@ -1,5 +1,5 @@
 'use strict';
-// Admin: login → tabs (หัวข้อ / จอใหญ่ / ผลโหวต / ตั้งค่างาน). Live state over SSE.
+// Admin: login → tabs (topics / big screen / results / event settings). Live state over SSE.
 // Lists re-render on each update; while an input inside <main> has focus the re-render waits until blur.
 
 const A = {

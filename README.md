@@ -1,255 +1,354 @@
-# เว็บโหวตประกวด งานเลี้ยงปีใหม่
+# Contest voting for company parties
 
-มีสามหน้า: คนโหวต (`/`), แอดมิน (`/admin`) และจอใหญ่ (`/screen`) ทั้งหมดรันจาก Node process เดียว
-ไม่ต้องตั้งฐานข้อมูล ข้อมูลเก็บเป็นไฟล์ `data/db.json` ส่วนรูปผู้เข้าประกวดอยู่ใน `data/uploads/`
+A small web app for costume and performance contests at events: guests vote from their phones, an admin runs the
+event, and a projector shows live results and a 3 → 2 → 1 reveal.
 
-## รันบนเครื่อง
+Three pages, served by one Node process: voters (`/`), admin (`/admin`) and the big screen (`/screen`).
+No database to set up: data lives in `data/db.json` and contestant photos in `data/uploads/`.
 
-ต้องมี Node 18 ขึ้นไป
+The screens are in Thai. Buttons and labels below are quoted exactly as they appear, with an English translation.
+
+## Run it locally
+
+Needs Node 18 or later.
 
 ```bash
 npm install
-ADMIN_PASSWORD=ตั้งรหัสเอง npm start
+ADMIN_PASSWORD=choose-a-long-password npm start
 ```
 
-ไม่อยากพิมพ์ค่าหน้าคำสั่งทุกครั้ง ให้ใส่ไว้ในไฟล์ `.env` (ดูหัวข้อ "เก็บค่าตั้งไว้ในไฟล์ .env") แล้วรันแค่ `npm start`
+To avoid typing settings on every start, put them in a `.env` file (see "Keep settings in a .env file") and run just
+`npm start`.
 
-พอรันแล้วหน้าจอจะขึ้นลิงก์สำหรับคนโหวต เช่น `http://192.168.1.20:3000/` ซึ่งเป็นที่อยู่ของเครื่องนี้ในวง Wi-Fi
-มือถือที่จะโหวตต้องต่อ Wi-Fi วงเดียวกับเครื่องนี้ ถ้าไม่ได้ตั้ง `ADMIN_PASSWORD` ระบบจะสุ่มรหัสให้และพิมพ์ไว้ในหน้าจอ
+On start the console prints the voter link, for example `http://192.168.1.20:3000/`, which is this machine's address
+on the Wi-Fi. Phones must be on the same Wi-Fi. If `ADMIN_PASSWORD` is not set, a random one is generated and printed.
 
-| ตัวแปร | ค่าเริ่มต้น | ใช้ทำอะไร |
+| Variable | Default | What it does |
 |---|---|---|
-| `ADMIN_PASSWORD` | สุ่มใหม่ทุกครั้งที่รัน (12 ตัว) | รหัสเข้าหน้าแอดมิน ควรยาว 10 ตัวขึ้นไป · เปลี่ยนรหัสแล้วทุกเครื่องที่ล็อกอินค้างไว้จะหลุด |
-| `PORT` | `3000` | พอร์ต (http) สำหรับคนโหวตและจอใหญ่ |
-| `HTTPS_PORT` | ปิด | เปิดพอร์ต https สำหรับหน้าแอดมิน ดูหัวข้อ "ใช้ในงานผ่าน Wi-Fi" |
-| `TLS_CERT` / `TLS_KEY` | – | ไฟล์ใบรับรองของตัวเอง ถ้าไม่ใส่ระบบสร้างแบบ self-signed ให้ (ต้องมีคำสั่ง `openssl`) |
-| `TRUST_PROXY` | ปิด | ตั้งเมื่อมี proxy/โฮสต์ที่ทำ https อยู่ข้างหน้าเท่านั้น เช่น `1` (เชื่อ proxy ชั้นเดียว) ถ้าเปิดทั้งที่ไม่มี proxy คนจะปลอม IP หลบการจำกัดได้ |
-| `DATA_DIR` | `./data` | ที่เก็บ db.json และรูป |
-| `ENV_FILE` | `.env` ข้าง `server.js` | ไฟล์ค่าตั้ง ถ้าอยากเก็บไว้ที่อื่น |
-| `MAIL_PROVIDER` | เดาจากค่าที่ตั้งไว้ | วิธีส่งรหัสทางอีเมล: `gmail`, `smtp` หรือ `brevo` ดูหัวข้อ "ส่งรหัสทางอีเมล" · ไม่ใช้อีเมลก็ไม่ต้องตั้งค่ากลุ่มนี้เลย |
-| `MAIL_FROM` | บัญชีที่ล็อกอิน (Gmail/SMTP) | ผู้ส่งอีเมล เช่น `vote@company.com` หรือ `'ทีมงานปีใหม่ <vote@company.com>'` · ไม่ใส่ชื่อ ระบบใช้ชื่องานเป็นชื่อผู้ส่ง · Brevo ต้องใส่เสมอ |
-| `GMAIL_USER` / `GMAIL_APP_PASSWORD` | – | บัญชี Gmail กับ App Password 16 ตัว ดูหัวข้อ "ใช้ Gmail" |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | พอร์ต `587` | เซิร์ฟเวอร์อีเมลของบริษัท ดูหัวข้อ "ใช้ SMTP ของบริษัท" · มี `SMTP_SECURE` และ `SMTP_CA_FILE` (ใบรับรองที่บริษัทออกเอง) เพิ่มเติม |
-| `BREVO_API_KEY` | – | API key ของ Brevo ดูหัวข้อ "ใช้ Brevo" |
-| `MAIL_DAILY_LIMIT` | Gmail 500 · Brevo 300 · SMTP ไม่จำกัด | ส่งได้กี่ฉบับต่อวัน ไว้เตือนแอดมินก่อนกดส่ง · `0` = ไม่เตือน |
+| `ADMIN_PASSWORD` | random each run (12 characters) | Admin page password. Use 10 characters or more. Changing it signs out every logged-in device. |
+| `PORT` | `3000` | http port for voters and the big screen |
+| `HTTPS_PORT` | off | Opens an https port for the admin page. See "At the venue over Wi-Fi". |
+| `TLS_CERT` / `TLS_KEY` | – | Your own certificate files. Without them a self-signed one is created (needs `openssl`). |
+| `TRUST_PROXY` | off | Set only when an https proxy or host sits in front, for example `1` (trust one proxy). Turning it on without a proxy lets people fake their IP and dodge the rate limits. |
+| `DATA_DIR` | `./data` | Where `db.json` and photos are stored |
+| `ENV_FILE` | `.env` next to `server.js` | Settings file, if you keep it elsewhere |
+| `MAIL_PROVIDER` | guessed from what is set | How vote codes are emailed: `gmail`, `smtp` or `brevo`. See "Email vote codes". Leave this group out if you do not use email. |
+| `MAIL_FROM` | the signed-in account (Gmail/SMTP) | Sender, for example `vote@company.com` or `'Party Team <vote@company.com>'`. Without a name, the event name is used. Required for Brevo. |
+| `GMAIL_USER` / `GMAIL_APP_PASSWORD` | – | Gmail account and its 16-character App Password. See "Using Gmail". |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | port `587` | Your company mail server. See "Using company SMTP". Also `SMTP_SECURE` and `SMTP_CA_FILE` (company-issued certificate). |
+| `BREVO_API_KEY` | – | Brevo API key. See "Using Brevo". |
+| `MAIL_DAILY_LIMIT` | Gmail 500 · Brevo 300 · SMTP unlimited | Emails per day, used to warn the admin before sending. `0` = no warning. |
 
-### เก็บค่าตั้งไว้ในไฟล์ .env
+### Keep settings in a .env file
 
 ```bash
-cp .env.example .env     # แล้วเปิด .env แก้ค่า
+cp .env.example .env     # then edit .env
 npm start
 ```
 
-- เขียนบรรทัดละค่าแบบ `ชื่อ=ค่า` บรรทัดที่ขึ้นต้นด้วย `#` เป็นหมายเหตุ ค่าที่มีเว้นวรรค `<` `>` หรือ `#` ให้ครอบด้วย `'...'` เช่น `MAIL_FROM='ทีมงานปีใหม่ <vote@company.com>'`
-- ค่าที่พิมพ์หน้าคำสั่ง (หรือตั้งในหน้า environment variables ของโฮสต์) ใช้แทนค่าในไฟล์เสมอ ตอนเปิดเซิร์ฟเวอร์จะบอกว่าอ่านค่าอะไรจากไฟล์บ้าง
-- แก้ไฟล์แล้วต้องรันเซิร์ฟเวอร์ใหม่
-- ไฟล์นี้มีรหัสผ่าน อย่าส่งต่อหรือเอาขึ้น git (`.gitignore` กันไว้แล้ว) ส่วน `.env.example` เป็นตัวอย่างที่ไม่มีรหัสจริง
+- One `NAME=value` per line. Lines starting with `#` are comments. Wrap values containing spaces, `<`, `>` or `#` in
+  `'...'`, for example `MAIL_FROM='Party Team <vote@company.com>'`.
+- Values given on the command line (or in a host's environment variables page) always win over the file. On start
+  the server lists which values came from the file.
+- Restart the server after editing the file.
+- The file holds passwords. Do not share it or commit it (`.gitignore` already excludes it). `.env.example` is a
+  template with no real secrets.
 
-### ใช้ในงานผ่าน Wi-Fi: เปิด https ให้หน้าแอดมิน
+### At the venue over Wi-Fi: turn on https for the admin page
 
-แบบ http ธรรมดา รหัสผ่านแอดมินและ cookie วิ่งแบบไม่เข้ารหัส ใครอยู่ Wi-Fi วงเดียวกันดักได้ ก่อนใช้จริงให้รันแบบนี้
+Over plain http, the admin password and cookie travel unencrypted, and anyone on the same Wi-Fi can capture them.
+Before real use, run:
 
 ```bash
-ADMIN_PASSWORD=ตั้งรหัสยาว ๆ HTTPS_PORT=3443 npm start
+ADMIN_PASSWORD=a-long-password HTTPS_PORT=3443 npm start
 ```
 
-- คนโหวตและจอใหญ่ยังใช้ `http://<ip>:3000` เหมือนเดิม (ไม่มีอะไรลับ) ส่วนหน้าแอดมินและหน้าพิมพ์บัตรจะถูกพาไป `https://<ip>:3443/admin` เอง
-- ใบรับรองเป็นแบบ self-signed เบราว์เซอร์จะเตือนครั้งแรก ให้กด "ขั้นสูง → ไปต่อ" เทียบลายนิ้วมือใบรับรองกับที่พิมพ์บนหน้าจอเซิร์ฟเวอร์ได้ถ้าต้องการความแน่ใจ
-- ล็อกอินแอดมินมีจำกัดการเดารหัส ถ้ามีคนยิงเดารหัสจากวงเดียวกัน แอดมินอาจล็อกอิน**ใหม่**ไม่ได้ชั่วคราว ให้ล็อกอินเครื่องที่ใช้คุมไว้ก่อนเริ่มงาน (ล็อกอินอยู่ได้ 24 ชั่วโมง)
+- Voters and the big screen stay on `http://<ip>:3000` (nothing secret there). The admin and card-printing pages
+  redirect to `https://<ip>:3443/admin`.
+- The certificate is self-signed, so browsers warn the first time: choose "Advanced → Proceed". To be sure, compare
+  the certificate fingerprint with the one printed in the server console.
+- Admin login is rate-limited. If someone floods password guesses from the same network, the admin may be unable to
+  log in **again** for a while, so log in on the control device before the event starts (sessions last 24 hours).
 
-ลองใช้กับข้อมูลตัวอย่าง: `node scripts/demo.js` แล้วเปิด http://localhost:3456/admin (รหัส `demo`)
-ทดสอบทั้งระบบรวมถึงจำลอง 200 คนโหวตพร้อมกัน: `node scripts/smoke-test.js` (ส่วนอีเมลทดสอบกับ Brevo จำลองในเครื่อง ไม่ส่งอีเมลจริง)
-ทดสอบการส่งผ่าน Gmail/SMTP กับเซิร์ฟเวอร์อีเมลจำลองในเครื่อง: `node scripts/mail-test.js` (ต้องมีคำสั่ง `openssl`)
+Try it with sample data: `node scripts/demo.js`, then open http://localhost:3456/admin (password `demo`).
+Full test, including 200 simultaneous voters: `node scripts/smoke-test.js` (email is tested against a local stand-in
+for Brevo; nothing is sent).
+Gmail/SMTP sending against local stand-in mail servers: `node scripts/mail-test.js` (needs `openssl`).
 
-## ขั้นตอนในวันงาน
+## On the day
 
-1. **ตั้งค่างาน**: ใส่ชื่องาน แล้วเลือกวิธีเข้าโหวต (งานใหม่เริ่มที่ "รหัสโหวต") ให้สร้างรหัสเผื่อจำนวนคนไว้สัก 10% แล้วกด "พิมพ์บัตรรหัส" (กระดาษ A4 ได้หน้าละ 21 ใบ บัตรแต่ละใบมี QR ที่ใส่รหัสไว้แล้ว สแกนแล้วเข้าได้เลย) ถ้าเลือก "กรอกชื่อ" ต้องวางรายชื่อพนักงานก่อน
-   - จะส่งรหัสทางอีเมลแทนหรือใช้คู่กับบัตรก็ได้ ดูหัวข้อ "ส่งรหัสทางอีเมล"
-2. **หัวข้อประกวด**: สร้างหัวข้อ กำหนดว่าแต่ละคนเลือกได้กี่คน แล้วเพิ่มผู้เข้าประกวดพร้อมรูป
-3. **ซ้อมก่อนงาน**: ลองโหวตจากมือถือจริง เสร็จแล้วไปที่ "ตั้งค่างาน" → "ล้างผลโหวตทั้งหมด"
-4. **จอใหญ่**: เปิด `/screen` บนเครื่องที่ต่อโปรเจกเตอร์แล้วกด F ให้เต็มจอ ที่เหลือคุมจากแท็บ "จอใหญ่" ในหน้าแอดมิน ใช้มือถือคุมก็ได้
-   - เลือกได้ว่าจะให้จอแสดงหน้ารวม (QR กับชื่องาน) หรือแสดงหัวข้อไหน
-   - "ซ่อนคะแนน" จะโชว์แค่จำนวนคนที่โหวตแล้ว ส่วน "โชว์คะแนนสด" จะเป็นกราฟแท่ง
-   - "ประกาศผล" กดได้หลังปิดโหวตแล้ว จากนั้นกด "เปิดอันดับ 3 → 2 → 1" ทีละขั้นตามจังหวะพิธีกร พอเปิดอันดับ 1 จะมีพลุกระดาษ
-5. **ผลโหวต**: ดูได้ตลอดเวลา และดาวน์โหลด CSV ได้ ไฟล์เปิดใน Excel แล้วภาษาไทยไม่เพี้ยน
+1. **Event settings**: set the event name and choose how people get in (new events start on vote codes, "รหัสโหวต").
+   Create about 10% more codes than guests, then press "พิมพ์บัตรรหัส" (print code cards). A4 fits 21 cards; each
+   card has a QR code with its code built in, so scanning gets the guest straight in. If you choose names
+   ("กรอกชื่อ"), paste the staff list first.
+   - You can email codes instead of, or as well as, printing cards. See "Email vote codes".
+2. **Contest topics**: create topics, set how many contestants each guest may pick, and add contestants with photos.
+3. **Rehearse**: vote from real phones, then go to "ตั้งค่างาน" (event settings) → "ล้างผลโหวตทั้งหมด" (clear all
+   votes).
+4. **Big screen**: open `/screen` on the projector computer and press F for full screen. Control it from the
+   "จอใหญ่" (big screen) tab on the admin page, from a phone if you like.
+   - Show the lobby (QR and event name) or a specific topic.
+   - "ซ่อนคะแนน" (hide scores) shows only how many people have voted; "โชว์คะแนนสด" (show live scores) shows a bar
+     chart.
+   - "ประกาศผล" (announce results) works once voting is closed. Then reveal 3rd → 2nd → 1st one step at a time
+     with the host. Confetti on 1st place.
+5. **Results**: visible at any time, and downloadable as CSV that opens in Excel with Thai text intact.
 
-## กติกาที่ระบบบังคับ
+## Rules the server enforces
 
-- แต่ละคนเลือกได้ไม่เกินจำนวนที่หัวข้อนั้นกำหนด เปลี่ยนใจได้ (ระบบเก็บเฉพาะชุดล่าสุด) จนกว่าหัวข้อจะปิด
-- หัวข้อที่ปิดแล้วโหวตไม่ได้ ถ้าเปิดอีกครั้งก็กลับมาโหวตได้
-- เมื่อมีคนโหวตแล้วจะเปลี่ยนวิธีเข้าโหวตไม่ได้ ต้องล้างผลก่อน
-- ถ้าคะแนนเท่ากันจะได้อันดับเดียวกัน บนจอจะขึ้นคู่กันพร้อมข้อความ "คะแนนเท่ากัน" อันดับ 1–3 บนจอนับจากระดับคะแนน 3 ระดับแรก (คนที่ได้ 0 คะแนนไม่ติดอันดับ)
+- Each guest picks no more than the topic allows. They can change their mind (only the latest picks count) until the
+  topic closes.
+- Closed topics take no votes. Reopening a topic allows voting again.
+- Once anyone has voted, the entry method cannot change until votes are cleared.
+- Ties share a place and appear together on screen with "คะแนนเท่ากัน" (tie). Places 1–3 on screen are the top three
+  distinct vote counts; contestants with 0 votes are not placed.
 
-### วิธีเข้าโหวตแต่ละแบบกันโหวตซ้ำได้แค่ไหน
+### How well each entry method stops repeat voting
 
-| วิธี | กันโหวตซ้ำ | ข้อจำกัด |
+| Method | Stops repeat voting | Limits |
 |---|---|---|
-| รหัสโหวต (แนะนำ) | ดีที่สุด หนึ่งบัตรเท่ากับหนึ่งเสียง | ต้องพิมพ์และแจกบัตร · รหัสใหม่ยาว 8 ตัว (บัตร 6 ตัวที่พิมพ์ไว้ก่อนยังใช้ได้) · กรอกรหัสผิดถี่ ๆ ระบบจะพักการกรอกชั่วคราว แต่สแกน QR บนบัตรรุ่นใหม่ยังเข้าได้ตลอด |
-| ชื่อหรือรหัสพนักงาน | เฉพาะชื่อในรายชื่อที่แอดมินใส่ไว้ | **ยังสวมชื่อกันได้** ใครรู้ชื่อหรือรหัสพนักงานของคนอื่นก็โหวตแทนหรือเปลี่ยนโหวตของเขาได้ · กันการไล่เดาด้วยโจทย์ที่มือถือต้องคำนวณก่อนกรอกทุกครั้ง (ปกติไม่รู้สึก) ถ้ามีคนกรอกชื่อผิดรัว ๆ โจทย์จะยากขึ้นจนอาจรอไม่กี่วินาที แต่**ไม่มีการล็อก** คนที่อยู่ในรายชื่อเข้าได้เสมอแม้ใช้ Wi-Fi วงเดียวกับคนแกล้ง · ถ้าเครื่องแอดมินขึ้นข้อความ "กรอกชื่อที่ไม่อยู่ในรายชื่อถี่ผิดปกติ" แปลว่ามีคนไล่เดาอยู่ |
-| ไม่ต้องกรอกอะไร | **กันไม่ได้** | ใช้กับงานเล่น ๆ เท่านั้น คนที่ใช้สคริปต์หรือเปิดหลายเบราว์เซอร์โหวตกี่ครั้งก็ได้ (ระบบแค่ชะลอและกันการล้างเบราว์เซอร์แบบง่าย ๆ) |
+| Vote codes (recommended) | Best: one card, one vote | Cards must be printed and handed out. New codes are 8 characters (6-character cards printed earlier still work). Repeated wrong codes pause typed entry for a while, but scanning a new card's QR always gets in. |
+| Name or staff ID | Only names on the list the admin pasted | **People can still impersonate each other**: anyone who knows a colleague's name or staff ID can vote as them or change their vote. Guessing is slowed by a small puzzle the phone solves before each entry (normally unnoticeable); if wrong names keep arriving, the puzzle gets harder and may take a few seconds, but there is **no lockout**, so people on the list always get in, even on the same Wi-Fi as a prankster. If the server console says wrong names are arriving unusually often, someone is guessing. |
+| No entry details | **Does not** | For casual fun only. Anyone with a script or several browsers can vote any number of times (the server only slows this down and stops simple "clear the browser and vote again"). |
 
-รายชื่อพนักงาน: บรรทัดละคน เป็น `รหัสพนักงาน, ชื่อ-นามสกุล` (วางจาก Excel สองคอลัมน์ได้) หรือแค่ชื่อ คนโหวตพิมพ์รหัสหรือชื่อก็ได้ เว้นวรรคหรือตัวพิมพ์เล็ก/ใหญ่ต่างกันถือเป็นคนเดียวกัน ถ้ามีชื่อซ้ำต้องใส่รหัสพนักงานแยก
+Staff list: one person per line, as `staff ID, full name` (two columns pasted from Excel work) or just a name. Voters
+can type either the ID or the name; spacing and letter case do not matter. Duplicate names need separate staff IDs.
 
-## ส่งรหัสทางอีเมล
+## Email vote codes
 
-ใช้ได้เมื่อวิธีเข้าโหวตเป็น "รหัสโหวต" อยู่ในแท็บ "ตั้งค่างาน" ใต้กล่องรหัสโหวต
+Available when the entry method is vote codes. Found on the "ตั้งค่างาน" (event settings) tab, under the vote code
+box.
 
-- วางอีเมลบรรทัดละคน ใส่ชื่อด้วยก็ได้ เช่น `somchai@example.com`, `สมหญิง รักงาน, somying@example.com`, `"ปั๊ม" <pump@example.com>` หรือวางสองคอลัมน์จาก Excel ถ้ามีบรรทัดไหนไม่มีอีเมลหรืออีเมลผิดรูป ระบบจะไม่เพิ่มใครเลยและบอกเลขบรรทัด อีเมลที่มีอยู่แล้ว (ตัวพิมพ์เล็ก/ใหญ่ต่างกันถือว่าซ้ำ) จะถูกข้าม
-- แต่ละอีเมลได้รหัสโหวตของตัวเองคนละใบ รหัสพวกนี้**ไม่ถูกพิมพ์เป็นบัตร** และไม่นับในตัวเลข "รหัสทั้งหมด" ของบัตร บัตรที่พิมพ์ใช้ได้เหมือนเดิม
-- ในอีเมลมีปุ่ม "เข้าโหวต" ที่ลิงก์เดียวกับ QR บนบัตร (กดแล้วเข้าได้เลยไม่ต้องกรอกรหัส) มี QR แนบเป็นไฟล์ `qr-vote.png` ให้สแกนเมื่อเปิดอีเมลบนคอมพิวเตอร์ และมีรหัสกับลิงก์หน้าเว็บไว้กรอกเองด้วย
-- ปุ่ม **"ส่งให้คนที่ยังไม่ได้ส่ง"** ส่งเฉพาะอีเมลที่ยังไม่เคยส่ง เพิ่มอีเมลทีหลังแล้วกดปุ่มนี้อีกครั้งได้เลย คนที่ได้ไปแล้วจะไม่ได้ซ้ำ ระบบส่งอยู่เบื้องหลัง ปิดหน้าแอดมินระหว่างส่งได้
-- รายชื่อแสดงสถานะทีละคน: ยังไม่ส่ง / กำลังส่ง / ส่งแล้ว (กี่ครั้ง เวลาไหน) / ส่งไม่สำเร็จ (พร้อมเหตุผล) และ "เข้าโหวตแล้ว" เมื่อเจ้าของรหัสเข้าระบบแล้ว ค้นหาด้วยอีเมล ชื่อ หรือรหัส และกรองเฉพาะกลุ่มได้ เช่น "ยังไม่เข้าโหวต"
-- คนที่บอกว่าไม่ได้รับ: ค้นชื่อแล้วกด **"ส่งซ้ำ"** ได้รหัสเดิม · คนที่ส่งไม่สำเร็จทั้งหมดกด "ส่งอีกครั้งให้ที่ไม่สำเร็จ" ได้ทีเดียว
-- พิมพ์อีเมลผิด: ลบอีเมลนั้น (รหัสของมันใช้ไม่ได้ทันที คนที่ได้อีเมลผิดไปจึงเอาไปใช้ไม่ได้) แล้วเพิ่มอีเมลที่ถูกเป็นรายการใหม่ ลบคนที่โหวตไปแล้วไม่ได้
-- "ส่งแล้ว" แปลว่าบริการที่ใช้ส่ง (Gmail, เซิร์ฟเวอร์ของบริษัท หรือ Brevo) รับอีเมลไปแล้ว ระบบไม่รู้ว่าอีเมลเด้งหรือเข้าสแปมหรือเปล่า · Gmail/SMTP: อีเมลที่เด้งจะกลับมาที่กล่องจดหมายของบัญชีที่ใช้ส่ง · Brevo: ดูที่ Transactional → Logs
-- ถ้าลิงก์ของงาน (ช่อง "ลิงก์ที่ QR พาไป" หรือ IP ของเครื่องในวง Wi-Fi) เปลี่ยนหลังส่ง หน้าแอดมินจะเตือนว่ากี่คนได้ลิงก์เก่าและมีปุ่มส่งใหม่ให้เฉพาะคนกลุ่มนั้น รหัสยังเป็นรหัสเดิม
+- Paste one address per line, with or without a name, for example `somchai@example.com`,
+  `Somying Rakngan, somying@example.com`, `"Pump" <pump@example.com>`, or two columns from Excel. If any line has no
+  address or a malformed one, nothing is added and the line numbers are listed. Addresses already in the list (case
+  ignored) are skipped.
+- Each address gets its own code. These codes are **not printed on cards** and do not count toward the card total.
+  Printed cards keep working.
+- The email has a "เข้าโหวต" (vote now) button with the same link as a card's QR (one tap, no code to type), a QR
+  attached as `qr-vote.png` for when the email is opened on a computer, and the code and site address written out.
+- **"ส่งให้คนที่ยังไม่ได้ส่ง"** (send to everyone not sent yet) sends only to addresses that have never been sent
+  to. Add more addresses later and press it again; nobody gets a second copy. Sending runs on the server, so you can
+  close the admin page meanwhile.
+- Each person shows a status: not sent / sending / sent (how many times, when) / failed (with the reason), plus "voted"
+  once the code has been used. Search by address, name or code, and filter, for example "not voted yet".
+- Someone says they did not get it: search their name and press **"ส่งซ้ำ"** (resend) for the same code. Retry
+  everyone who failed with "ส่งอีกครั้งให้ที่ไม่สำเร็จ" (retry failed).
+- Typo in an address: delete it (its code stops working at once, so whoever received the wrong email cannot use it)
+  and add the correct address as a new entry. People who have already voted cannot be deleted.
+- "Sent" means the sending service (Gmail, your company server or Brevo) accepted the email. The app cannot tell if
+  it bounced or went to spam. Gmail/SMTP: bounces return to the sending account's inbox. Brevo: see Transactional →
+  Logs.
+- If the event link changes after sending (the "ลิงก์ที่ QR พาไป" field, "link the QR opens", or the machine's Wi-Fi
+  address), the admin page shows how many people have the old link and offers to resend to just them. Codes stay the
+  same.
 
-**ลิงก์ในอีเมลเปิดได้จากที่ไหน**: ถ้ายังไม่ได้ใส่ลิงก์ https ในช่อง "ลิงก์ที่ QR พาไป" ลิงก์ในอีเมลจะเป็นที่อยู่ในวง Wi-Fi เช่น `http://192.168.1.20:3000/` ซึ่งเปิดได้เฉพาะตอนมือถือต่อ Wi-Fi ของงาน (อีเมลเขียนบอกผู้รับไว้) ถ้าจะส่งล่วงหน้าให้คนเปิดจากที่ไหนก็ได้ ต้องเอาขึ้นเว็บก่อน (ดูหัวข้อถัดไป) เมื่อลิงก์เป็น https ในตัวอีเมลจะแสดงรูป QR ให้เห็นเลยด้วย ไม่ต้องเปิดไฟล์แนบ (ถ้าส่งผ่าน Gmail หรือ SMTP รูป QR อยู่ในตัวอีเมลเสมอ ไม่ว่าลิงก์จะเป็นแบบไหน)
+**Where the email link works**: until an https address is entered in "ลิงก์ที่ QR พาไป", the link is the Wi-Fi
+address, for example `http://192.168.1.20:3000/`, which only opens on the event Wi-Fi (the email tells recipients).
+To send ahead of time so people can open it anywhere, put the app online first (see the next section). With an https
+link, the QR also shows inside the email, not just as an attachment. (Via Gmail or SMTP the QR is always inside the
+email.)
 
-### เลือกวิธีส่ง
+### Choosing how to send
 
-| วิธี | เหมาะกับ | ส่งได้ต่อวัน | ต้องมีอะไร |
+| Method | Good for | Per day | You need |
 |---|---|---|---|
-| **Gmail** (`MAIL_PROVIDER=gmail`) | เริ่มเร็วที่สุด ใช้บัญชี Gmail ที่มีอยู่ | ราว 500 ฉบับ (Google Workspace ราว 2,000) | บัญชี Gmail ที่เปิดยืนยันแบบ 2 ขั้นตอน + App Password |
-| **SMTP ของบริษัท** (`MAIL_PROVIDER=smtp`) | อยากให้อีเมลมาจากโดเมนบริษัท เข้ากล่องจดหมายง่าย | ตามที่บริษัทกำหนด | host, พอร์ต, ชื่อผู้ใช้, รหัสผ่าน จากฝ่ายไอที |
-| **Brevo** (`MAIL_PROVIDER=brevo`) | ไม่มีทั้งสองแบบข้างบน หรือโฮสต์บล็อกพอร์ต SMTP | 300 ฉบับ (แผนฟรี) | บัญชี Brevo + API key + อีเมลผู้ส่งที่ยืนยันแล้ว |
+| **Gmail** (`MAIL_PROVIDER=gmail`) | Quickest start with an existing Gmail account | about 500 (Google Workspace about 2,000) | A Gmail account with 2-Step Verification and an App Password |
+| **Company SMTP** (`MAIL_PROVIDER=smtp`) | Mail from your company domain, better inbox placement | as your company allows | Host, port, username and password from IT |
+| **Brevo** (`MAIL_PROVIDER=brevo`) | Neither of the above, or a host that blocks SMTP ports | 300 (free plan) | A Brevo account, an API key and a verified sender |
 
-- ใส่ค่าในไฟล์ `.env` (ดูตัวอย่างใน `.env.example`) แล้วรันเซิร์ฟเวอร์ใหม่ เปลี่ยนวิธีส่งเมื่อไหร่ก็ได้โดยแก้ `MAIL_PROVIDER` รายชื่อและสถานะที่ส่งไปแล้วยังอยู่ครบ
-- ถ้าไม่ตั้ง `MAIL_PROVIDER` ระบบเลือกให้จากค่าที่มี: มี `BREVO_API_KEY` ใช้ Brevo (เหมือนเวอร์ชันก่อน) ไม่มีก็ดูว่ามี `GMAIL_USER` ไหม แล้วค่อยดู `SMTP_HOST`
-- หน้าแอดมิน (กล่อง "ส่งรหัสทางอีเมล") บอกว่าตอนนี้ส่งด้วยวิธีไหน บัญชีไหน ในชื่อใคร และมีปุ่ม **"ส่งฉบับทดสอบ"** ไว้ส่งหาตัวเองก่อนส่งจริง
-- Gmail กับ SMTP: ตอนเปิดเซิร์ฟเวอร์ ระบบลองล็อกอินให้หนึ่งครั้ง ถ้าขึ้น "ล็อกอิน … ได้ พร้อมส่ง" แปลว่าค่าถูก ถ้าล็อกอินไม่ได้ หน้าแอดมินจะขึ้นเหตุผลเป็นสีแดงตั้งแต่ก่อนกดส่ง
+- Put the values in `.env` (see `.env.example`) and restart. You can switch methods any time by changing
+  `MAIL_PROVIDER`; the recipient list and statuses stay.
+- Without `MAIL_PROVIDER`, the method is picked from what is set: `BREVO_API_KEY` means Brevo (as in earlier
+  versions), otherwise `GMAIL_USER`, then `SMTP_HOST`.
+- The admin page's email box shows the method, account and sender name, and has **"ส่งฉบับทดสอบ"** (send a test) so
+  you can email yourself first.
+- Gmail and SMTP: on start the server tries one login. "ล็อกอิน … ได้ พร้อมส่ง" (logged in, ready) means the settings
+  work; if login fails, the admin page shows the reason in red before you press send.
 
-### จำนวนที่ส่งได้ต่อวัน
+### Daily sending limits
 
-Gmail และ Brevo แผนฟรีจำกัดจำนวนอีเมลต่อวัน หน้าแอดมินจึงแสดง "ส่งได้ราววันละ … · 24 ชั่วโมงที่ผ่านมาส่งไปแล้ว … · เหลือราว …" ไว้ตลอด
+Gmail and Brevo's free plan limit emails per day, so the admin page always shows "about N per day · sent in the last
+24 hours · about N left".
 
-- ถ้ามีคนรอส่งมากกว่าที่ยังส่งได้ จะมีแถบเตือนสีเหลือง และพอกดส่ง ระบบจะถามก่อนพร้อมให้เลือก **"ส่ง … ฉบับก่อน"** คนที่เหลือยังอยู่ในรายชื่อตามเดิม พอครบ 24 ชั่วโมงก็กดปุ่มเดิมส่งต่อได้ คนที่ได้ไปแล้วจะไม่ได้ซ้ำ
-- ตัวเลขนับเฉพาะที่ส่งจากระบบนี้ (รวมฉบับทดสอบ) ถ้าใช้บัญชีเดียวกันส่งอีเมลอื่นด้วย โควตาที่เหลือจริงจะน้อยกว่าที่แสดง
-- เปลี่ยนตัวเลขได้ที่ `MAIL_DAILY_LIMIT` เช่น บัญชี Google Workspace ใส่ `2000` · Brevo แผนเสียเงินใส่ตามแผน · เซิร์ฟเวอร์บริษัทใส่ตามที่ไอทีบอก · `0` = ไม่ต้องเตือน
-- ถ้างานมีคนมากกว่าที่ส่งได้ในวันเดียว ให้เริ่มส่งล่วงหน้าหลายวัน
+- If more people are waiting than can still be sent, a yellow warning appears, and pressing send asks first, offering
+  **"ส่ง … ฉบับก่อน"** (send N now). The rest stay in the list; press the same button after 24 hours. Nobody gets a
+  second copy.
+- The count covers only email sent by this app (test emails included). If the account sends other mail too, the real
+  remaining quota is lower.
+- Change it with `MAIL_DAILY_LIMIT`, for example `2000` for Google Workspace, your plan's number for paid Brevo, or
+  what IT says for a company server. `0` = no warning.
+- If the guest list is bigger than one day's limit, start sending several days ahead.
 
-### ใช้ Gmail (ทำครั้งเดียว ราว 5 นาที)
+### Using Gmail (once, about 5 minutes)
 
-แนะนำให้สมัครบัญชี Gmail ใหม่ไว้ส่งงานนี้โดยเฉพาะ ไม่ใช้บัญชีส่วนตัว เพราะถ้าส่งเกินจำนวนต่อวัน Google จะระงับการส่งของ**ทั้งบัญชี**ราว 24 ชั่วโมง (ส่งจากเว็บ Gmail ก็ไม่ได้) และทุกฉบับที่ระบบส่งจะไปอยู่ในโฟลเดอร์ "จดหมายที่ส่งแล้ว" ของบัญชีนั้น
+Create a separate Gmail account for this rather than using a personal one: if you go over the daily limit, Google
+suspends sending for the **whole account** for about 24 hours (even from the Gmail website), and every email the app
+sends lands in that account's Sent folder.
 
-1. **เปิดการยืนยันแบบ 2 ขั้นตอน** (ต้องทำก่อน ไม่งั้นสร้าง App Password ไม่ได้)
-   - ล็อกอินบัญชีที่จะใช้ แล้วเปิด <https://myaccount.google.com/security>
-   - ในส่วน **"วิธีลงชื่อเข้าใช้ Google"** (How you sign in to Google) กด **"การยืนยันแบบ 2 ขั้นตอน"** (2-Step Verification)
-   - กด **"เปิดการยืนยันแบบ 2 ขั้นตอน"** (Turn on 2-Step Verification) แล้วทำตามที่หน้าจอบอก ส่วนใหญ่คือใส่เบอร์มือถือแล้วกรอกรหัสที่ได้ทาง SMS
-2. **สร้าง App Password**
-   - เปิด <https://myaccount.google.com/apppasswords> (หรือพิมพ์ "รหัสผ่านสำหรับแอป" / "App passwords" ในช่องค้นหาของหน้าบัญชี Google) Google อาจให้ใส่รหัสผ่านอีกครั้ง
-   - ช่อง **"ชื่อแอป"** (App name) พิมพ์ชื่ออะไรก็ได้ที่จำได้ เช่น `เว็บโหวต` แล้วกด **"สร้าง"** (Create)
-   - จะขึ้นรหัส 16 ตัวในกรอบสีเหลือง เช่น `abcd efgh ijkl mnop` **คัดลอกเก็บไว้ทันที** เพราะปิดหน้าต่างแล้วจะดูอีกไม่ได้ (ถ้าหายก็สร้างใหม่ได้) แล้วกด **"เสร็จสิ้น"** (Done)
-3. **ใส่ในไฟล์ `.env`**
+1. **Turn on 2-Step Verification** (required before you can create an App Password)
+   - Sign in to the account and open <https://myaccount.google.com/security>.
+   - Under **How you sign in to Google**, choose **2-Step Verification**.
+   - Choose **Turn on 2-Step Verification** and follow the steps, usually a phone number and an SMS code.
+2. **Create an App Password**
+   - Open <https://myaccount.google.com/apppasswords> (or search "App passwords" on the Google Account page). Google
+     may ask for your password again.
+   - Under **App name**, type anything you will recognise, for example `contest vote`, and press **Create**.
+   - A 16-character password appears in a yellow box, for example `abcd efgh ijkl mnop`. **Copy it now**; it is not
+     shown again (you can always create a new one). Press **Done**.
+3. **Put it in `.env`**
 
    ```bash
    MAIL_PROVIDER=gmail
    GMAIL_USER=yourname@gmail.com
    GMAIL_APP_PASSWORD='abcd efgh ijkl mnop'
-   MAIL_FROM='ทีมงานปีใหม่ <yourname@gmail.com>'
+   MAIL_FROM='Party Team <yourname@gmail.com>'
    ```
 
-   - `GMAIL_APP_PASSWORD` คือรหัส 16 ตัวจากข้อ 2 **ไม่ใช่รหัสผ่านที่ใช้ล็อกอิน Gmail** จะมีเว้นวรรคหรือไม่ก็ได้
-   - `MAIL_FROM` ไม่ใส่ก็ได้ แต่ถ้าใส่จะได้ตั้งชื่อผู้ส่งเอง อีเมลในนั้นต้องตรงกับ `GMAIL_USER` (ถ้าเป็นอีเมลอื่น Gmail จะเปลี่ยนกลับเป็น `GMAIL_USER` เอง ยกเว้นตั้งไว้ใน Gmail → การตั้งค่า → บัญชีและการนำเข้า → "ส่งจดหมายในชื่อ")
-4. รัน `npm start` แล้วดูว่าหน้าจอขึ้น `อีเมล : ล็อกอิน Gmail ได้ พร้อมส่ง` จากนั้นกด **"ส่งฉบับทดสอบ"** ในหน้าแอดมิน
+   - `GMAIL_APP_PASSWORD` is the 16-character password from step 2, **not your Gmail login password**. Spaces are
+     optional.
+   - `MAIL_FROM` is optional but lets you set the sender name. Its address must match `GMAIL_USER` (Gmail rewrites
+     other addresses back to `GMAIL_USER` unless you added them under Gmail → Settings → Accounts and Import →
+     "Send mail as").
+4. Run `npm start` and check the console shows that Gmail login worked ("ล็อกอิน Gmail ได้ พร้อมส่ง"), then press
+   **"ส่งฉบับทดสอบ"** (send a test) on the admin page.
 
-| ปัญหา | แก้อย่างไร |
+| Problem | Fix |
 |---|---|
-| หน้า App passwords บอกว่าการตั้งค่านี้ไม่พร้อมใช้งานสำหรับบัญชีของคุณ | ยังไม่ได้เปิดการยืนยันแบบ 2 ขั้นตอน (ข้อ 1) · หรือเป็นบัญชีบริษัท (Google Workspace) ที่ผู้ดูแลปิดไว้ ให้ขอฝ่ายไอทีเปิด หรือใช้วิธี SMTP/Brevo แทน · หรือบัญชีเปิด Advanced Protection ไว้ |
-| "Gmail ไม่รับรหัสผ่าน ต้องใช้ App Password 16 ตัว" | ใส่รหัสผ่านล็อกอินแทน App Password หรือ `GMAIL_USER` ไม่ใช่บัญชีที่สร้าง App Password นั้น · **ถ้าเปลี่ยนรหัสผ่าน Google แล้ว App Password เดิมจะใช้ไม่ได้** ต้องสร้างใหม่ |
-| "Gmail แจ้งว่าส่งครบโควตาแล้ว" | ส่งเกินจำนวนต่อวัน รอให้ครบ 24 ชั่วโมงแล้วกด "ส่งอีกครั้งให้ที่ไม่สำเร็จ" |
-| "ต่อ Gmail (smtp.gmail.com:465) ไม่ได้" | เครื่องไม่ได้ต่ออินเทอร์เน็ต หรือเครือข่าย/โฮสต์บล็อกพอร์ต 465 (โฮสต์คลาวด์บางเจ้าบล็อกพอร์ตอีเมล) ลองเครือข่ายอื่นหรือใช้ Brevo |
+| The App passwords page says the setting is not available for your account | 2-Step Verification is not on (step 1), or it is a company Google Workspace account where the admin turned it off (ask IT, or use SMTP/Brevo), or the account uses Advanced Protection. |
+| Gmail rejects the password and asks for a 16-character App Password | You entered the login password instead of an App Password, or `GMAIL_USER` is not the account that created it. **Changing your Google password invalidates existing App Passwords**; create a new one. |
+| Gmail says the quota is used up | Over the daily limit. Wait 24 hours, then press "ส่งอีกครั้งให้ที่ไม่สำเร็จ" (retry failed). |
+| Cannot connect to Gmail (smtp.gmail.com:465) | No internet, or the network or host blocks port 465 (some cloud hosts block mail ports). Try another network or use Brevo. |
 
-### ใช้ SMTP ของบริษัท
+### Using company SMTP
 
-ขอข้อมูลเหล่านี้จากฝ่ายไอที: ชื่อเซิร์ฟเวอร์ (host), พอร์ต, ใช้การเข้ารหัสแบบไหน, ชื่อผู้ใช้กับรหัสผ่าน (ควรขอบัญชีแยกไว้ส่งอีเมลระบบ เช่น `vote@company.com`), ส่งออกนอกบริษัทได้ไหม และส่งได้วันละกี่ฉบับ
+Ask IT for: server name (host), port, encryption type, username and password (ideally a separate account for system
+mail, such as `vote@company.com`), whether it may send outside the company, and how many emails per day.
 
 ```bash
 MAIL_PROVIDER=smtp
 SMTP_HOST=mail.company.com
 SMTP_PORT=587
 SMTP_USER=vote@company.com
-SMTP_PASS='รหัสผ่าน'
-MAIL_FROM='ทีมงานปีใหม่ <vote@company.com>'
-# MAIL_DAILY_LIMIT=1000      ถ้าไอทีบอกตัวเลขมา
+SMTP_PASS='password'
+MAIL_FROM='Party Team <vote@company.com>'
+# MAIL_DAILY_LIMIT=1000      if IT gives you a number
 ```
 
-| ค่า | ใส่อย่างไร |
+| Setting | How to fill it in |
 |---|---|
-| `SMTP_PORT` | ส่วนใหญ่ใช้ `587` (เริ่มแบบธรรมดาแล้วเข้ารหัสด้วย STARTTLS) หรือ `465` (เข้ารหัสตั้งแต่ต้น) · `25` มักใช้ในวงภายใน (ต้องรองรับ STARTTLS ด้วย ดูข้างล่าง) · ไม่ใส่ = `587` |
-| `SMTP_SECURE` | ไม่ต้องใส่ ระบบเดาจากพอร์ตเอง (465 = `true` นอกนั้น `false`) ใส่เองเมื่อเซิร์ฟเวอร์ใช้พอร์ตแปลก ๆ · `false` = ต้องเข้ารหัสด้วย STARTTLS ให้ได้ก่อน ไม่งั้นไม่ส่ง |
-| `SMTP_USER` / `SMTP_PASS` | เว้นว่างได้ถ้าเซิร์ฟเวอร์ภายในส่งต่อให้โดยไม่ต้องล็อกอิน (ไอทีอนุญาตตาม IP ของเครื่อง) · ถ้า `SMTP_USER` เป็นอีเมล ไม่ใส่ `MAIL_FROM` ก็ได้ |
-| `SMTP_CA_FILE` | ใส่เฉพาะเมื่อเซิร์ฟเวอร์ใช้ใบรับรองที่บริษัทออกเอง: ขอไฟล์ใบรับรองของบริษัท (CA หรือใบรับรองของเซิร์ฟเวอร์เอง แบบ `.pem` ที่ขึ้นต้นด้วย `-----BEGIN CERTIFICATE-----`) จากฝ่ายไอที แล้วใส่ที่อยู่ไฟล์ เช่น `SMTP_CA_FILE=./company-ca.pem` (ที่อยู่แบบสั้นนับจากโฟลเดอร์ของไฟล์ `.env`) ระบบเชื่อใบรับรองที่ออกโดยไฟล์นี้เพิ่มจากใบรับรองสาธารณะปกติ แต่ยังตรวจทุกครั้ง รวมถึงชื่อเซิร์ฟเวอร์ต้องตรงกับ `SMTP_HOST` |
+| `SMTP_PORT` | Usually `587` (starts plain, then encrypts with STARTTLS) or `465` (encrypted from the start). `25` is common internally (it must support STARTTLS too, see below). Default `587`. |
+| `SMTP_SECURE` | Leave it out; it follows the port (465 = `true`, otherwise `false`). Set it for unusual ports. `false` = STARTTLS must succeed first or nothing is sent. |
+| `SMTP_USER` / `SMTP_PASS` | Leave empty if the internal server relays without login (IT allows this machine's IP). If `SMTP_USER` is an email address, `MAIL_FROM` is optional. |
+| `SMTP_CA_FILE` | Only when the server uses a company-issued certificate: get the certificate file from IT (the CA or the server's own certificate, as `.pem` starting with `-----BEGIN CERTIFICATE-----`) and give its path, for example `SMTP_CA_FILE=./company-ca.pem` (relative paths start from the `.env` folder). Certificates issued by this file are trusted in addition to the usual public ones, but are still checked every time, including that the server name matches `SMTP_HOST`. |
 
-**ระบบตรวจการเข้ารหัสทุกครั้ง ปิดไม่ได้**: รหัสผ่านและอีเมลจะส่งออกไปก็ต่อเมื่อการเชื่อมต่อเข้ารหัสแล้ว และใบรับรองของเซิร์ฟเวอร์ผ่านการตรวจ (ออกโดยผู้ออกใบรับรองที่เชื่อถือได้หรือโดยไฟล์ใน `SMTP_CA_FILE` ยังไม่หมดอายุ และออกให้ชื่อเดียวกับ `SMTP_HOST`) ถ้าไม่ผ่านข้อใดข้อหนึ่ง ระบบหยุดก่อนส่งรหัสผ่าน แล้วบอกเหตุผลในหน้าแอดมิน เพราะถ้ายอมส่งแบบไม่เข้ารหัส คนที่อยู่ Wi-Fi เดียวกันดักรหัสผ่านได้ หรือแอบตัดคำว่า STARTTLS ออกจากคำตอบของเซิร์ฟเวอร์เพื่อหลอกให้ส่งแบบไม่เข้ารหัสได้ · ผลคือ **เซิร์ฟเวอร์ภายในที่ไม่รองรับการเข้ารหัสเลยใช้กับระบบนี้ไม่ได้** (แม้จะไม่ต้องล็อกอินก็ตาม เพราะในอีเมลมีลิงก์โหวตของแต่ละคน) ให้ฝ่ายไอทีเปิด STARTTLS หรือใช้ Gmail/Brevo แทน
+**Encryption is always checked and cannot be turned off.** Passwords and email are sent only after the connection is
+encrypted and the server's certificate passes: issued by a trusted authority or by the file in `SMTP_CA_FILE`, not
+expired, and issued for the same name as `SMTP_HOST`. If any check fails, the app stops before sending the password
+and shows the reason on the admin page. Sending unencrypted would let anyone on the same Wi-Fi capture the password,
+or strip the word STARTTLS from the server's reply to trick the app into sending in the clear. As a result, **internal
+servers with no encryption at all cannot be used** (even without login, because each email carries a personal voting
+link). Ask IT to enable STARTTLS, or use Gmail/Brevo.
 
-> `SMTP_ALLOW_SELF_SIGNED` ของเวอร์ชันก่อนเลิกใช้แล้ว ใส่ไว้ก็ไม่มีผล (หน้าแอดมินจะเตือน) ถ้าเคยใส่ไว้ ให้เปลี่ยนเป็น `SMTP_CA_FILE` ตามข้างบน
+> `SMTP_ALLOW_SELF_SIGNED` from earlier versions is retired and has no effect (the admin page warns). If you set it,
+> switch to `SMTP_CA_FILE` as described above.
 
-- บริษัทที่ใช้อีเมลของ Google (Google Workspace) ใช้วิธี Gmail ข้างบนกับบัญชีบริษัทได้เลย (ถ้าผู้ดูแลเปิดให้สร้าง App Password) แล้วตั้ง `MAIL_DAILY_LIMIT=2000`
-- Microsoft 365 / Outlook: host `smtp.office365.com` พอร์ต `587` แต่ผู้ดูแลต้องเปิด "Authenticated SMTP" ให้กล่องจดหมายนั้นก่อน และ Microsoft กำลังเลิกให้ล็อกอิน SMTP ด้วยรหัสผ่านธรรมดา ถ้าไอทีบอกว่าใช้ไม่ได้ ให้ใช้ Gmail หรือ Brevo แทน
+- Companies on Google Workspace can use the Gmail method above with a company account (if the admin allows App
+  Passwords) and set `MAIL_DAILY_LIMIT=2000`.
+- Microsoft 365 / Outlook: host `smtp.office365.com`, port `587`, but the admin must enable "Authenticated SMTP" for
+  that mailbox, and Microsoft is phasing out SMTP login with plain passwords. If IT says it does not work, use Gmail or
+  Brevo.
 
-| ข้อความ | แก้อย่างไร |
+| Message (shown in Thai) | Fix |
 |---|---|
-| ต่อเซิร์ฟเวอร์อีเมล (host:พอร์ต) ไม่ได้ | host หรือพอร์ตผิด หรือเครือข่ายบล็อกพอร์ตนั้น (เครือข่ายนอกบริษัทมักเข้าเซิร์ฟเวอร์ภายในไม่ได้) |
-| เชื่อมต่อแบบเข้ารหัสไม่ได้ | พอร์ตกับ `SMTP_SECURE` ไม่เข้าคู่กัน (465 = `true`, 587/25 = `false`) |
-| ไม่ยอมเข้ารหัสด้วย STARTTLS | เซิร์ฟเวอร์ไม่เสนอ STARTTLS: ถ้าเซิร์ฟเวอร์ใช้พอร์ต 465 ให้ตั้ง `SMTP_PORT=465` · ถ้าไอทียืนยันว่ารองรับ STARTTLS อยู่ แปลว่ามีอะไรในเครือข่ายตัดออก (อาจถูกดัก) ลองเครือข่ายอื่น · ถ้าไม่รองรับจริง ใช้กับระบบนี้ไม่ได้ |
-| ใบรับรองของ … ไม่ผ่านการตรวจ | ใบรับรองออกโดยบริษัทเอง → ใส่ไฟล์ใบรับรองใน `SMTP_CA_FILE` · ใส่แล้วยังขึ้น = ไฟล์ไม่ใช่ใบที่ออกใบรับรองนี้ หรือใบรับรองหมดอายุ · ถ้าเซิร์ฟเวอร์ใช้ใบรับรองสาธารณะปกติ อาจมีคนดักการเชื่อมต่ออยู่ อย่าเพิ่งส่ง |
-| ใบรับรองของเซิร์ฟเวอร์ไม่ได้ออกให้ชื่อ … | `SMTP_HOST` ต้องเป็นชื่อเดียวกับในใบรับรอง เช่นใช้ `mail.company.com` แทน IP (ถามฝ่ายไอที) |
-| `SMTP_CA_FILE (อ่านไฟล์ … ไม่ได้)` / `ไม่ใช่ใบรับรองแบบ .pem` | ตรวจที่อยู่ไฟล์ และไฟล์ต้องเป็นข้อความที่ขึ้นต้นด้วย `-----BEGIN CERTIFICATE-----` (ถ้าได้มาเป็น `.cer`/`.crt` แบบไบนารี ให้ไอทีแปลงเป็น PEM) |
-| ไม่รับชื่อผู้ใช้หรือรหัสผ่าน | ตรวจ `SMTP_USER` / `SMTP_PASS` บางที่ต้องใส่ชื่อผู้ใช้เป็นอีเมลเต็ม |
-| ไม่ยอมส่งออกไปนอกองค์กร (relay) | ต้องล็อกอิน หรือขอไอทีอนุญาตให้เครื่องนี้ส่งออกนอกบริษัทได้ |
-| ไม่ให้ส่งในชื่อ … | `MAIL_FROM` ต้องเป็นอีเมลที่บัญชีนี้มีสิทธิ์ส่ง ส่วนใหญ่คืออีเมลเดียวกับ `SMTP_USER` |
+| Cannot connect to the mail server (host:port) | Wrong host or port, or the network blocks that port (outside networks often cannot reach internal servers). |
+| Cannot establish an encrypted connection | Port and `SMTP_SECURE` do not match (465 = `true`, 587/25 = `false`). |
+| Server will not encrypt with STARTTLS | The server does not offer STARTTLS. If it uses port 465, set `SMTP_PORT=465`. If IT confirms STARTTLS is supported, something on the network is stripping it (possible interception); try another network. If it really is not supported, it cannot be used with this app. |
+| The certificate of … failed verification | Company-issued certificate → put the certificate file in `SMTP_CA_FILE`. Still failing = the file did not issue this certificate, or it has expired. If the server uses a normal public certificate, someone may be intercepting the connection; do not send yet. |
+| The server's certificate is not issued for … | `SMTP_HOST` must be the name in the certificate, for example `mail.company.com` instead of an IP (ask IT). |
+| `SMTP_CA_FILE` cannot be read / is not a `.pem` certificate | Check the path. The file must be text starting with `-----BEGIN CERTIFICATE-----` (if you got a binary `.cer`/`.crt`, ask IT to convert it to PEM). |
+| Username or password rejected | Check `SMTP_USER` / `SMTP_PASS`; some servers need the full email address as username. |
+| Will not relay outside the organisation | Log in, or ask IT to allow this machine to send externally. |
+| Not allowed to send as … | `MAIL_FROM` must be an address this account may send as, usually the same as `SMTP_USER`. |
 
-### ใช้ Brevo (ทำครั้งเดียว ราว 10 นาที)
+### Using Brevo (once, about 10 minutes)
 
-[Brevo](https://www.brevo.com) แผนฟรีส่งได้ **300 ฉบับต่อวัน** ไม่ต้องใส่บัตรเครดิต และไม่บังคับให้มีโดเมนของตัวเอง ระบบเรียก API ของ Brevo ผ่าน https โดยตรง จึงไม่ติดปัญหาโฮสต์ที่บล็อกพอร์ต SMTP
+[Brevo](https://www.brevo.com)'s free plan sends **300 emails a day**, needs no credit card and no domain of your own.
+The app calls Brevo's API over https directly, so hosts that block SMTP ports are not a problem.
 
-1. สมัครที่ brevo.com แล้วยืนยันบัญชีตามที่ Brevo ขอ
-2. ยืนยันอีเมลผู้ส่ง: เมนู **Senders, Domains & Dedicated IPs → Senders → Add a sender** ใส่อีเมลที่จะใช้ส่ง แล้วกดลิงก์ยืนยันในอีเมลที่ Brevo ส่งไป
-   - แนะนำให้ใช้อีเมลบริษัท และถ้าทำได้ให้ยืนยันโดเมนด้วย (แท็บ **Domains** แล้วเพิ่ม DNS ตามที่บอก) อีเมลจะเข้ากล่องจดหมายมากขึ้น ไม่ตกสแปม · อีเมลฟรีอย่าง @gmail.com ใช้เป็นผู้ส่งได้แต่มีโอกาสเข้าสแปมสูง
-3. สร้าง API key: เมนูมุมขวาบน → **SMTP & API → API Keys → Generate a new API key** คัดลอกค่าที่ขึ้นต้นด้วย `xkeysib-` (ใช้ API key ไม่ใช่ SMTP key)
-4. ใส่ในไฟล์ `.env` แล้วรัน `npm start` (จะพิมพ์หน้าคำสั่งแบบเดิมก็ยังได้: `BREVO_API_KEY=... MAIL_FROM='...' npm start`)
+1. Sign up at brevo.com and verify the account as asked.
+2. Verify a sender: **Senders, Domains & Dedicated IPs → Senders → Add a sender**, enter the address you will send
+   from, and click the link in Brevo's confirmation email.
+   - A company address is best, and verifying the domain too (the **Domains** tab, then add the DNS records shown)
+     improves inbox placement. Free addresses such as @gmail.com work as a sender but are more likely to land in spam.
+3. Create an API key: top-right menu → **SMTP & API → API Keys → Generate a new API key**. Copy the value starting
+   with `xkeysib-` (an API key, not an SMTP key).
+4. Put it in `.env` and run `npm start` (the old command-line form still works:
+   `BREVO_API_KEY=... MAIL_FROM='...' npm start`).
 
    ```bash
    MAIL_PROVIDER=brevo
    BREVO_API_KEY=xkeysib-xxxxxxxx
-   MAIL_FROM='ทีมงานปีใหม่ <vote@company.com>'
+   MAIL_FROM='Party Team <vote@company.com>'
    ```
 
-   เก็บ API key เป็นความลับ ใครได้ไปส่งอีเมลในนามบริษัทได้ · บนโฮสต์อย่าง Railway/Render ให้ใส่ในหน้าตั้งค่า environment variables
-5. ในหน้าแอดมินกด **"ส่งฉบับทดสอบ"** ส่งหาตัวเองก่อน ฉบับทดสอบใช้รหัสตัวอย่างที่เข้าโหวตไม่ได้ ดูว่าถึงกล่องจดหมาย ไม่ตกสแปม แล้วค่อยส่งจริง
+   Keep the API key secret: anyone who has it can send email in your company's name. On hosts such as Railway or
+   Render, set it in the environment variables page.
+5. On the admin page press **"ส่งฉบับทดสอบ"** (send a test) to yourself first. The test email uses a sample code that
+   cannot vote. Check it reaches the inbox, not spam, then send for real.
 
-ทุกวิธีส่ง: ถ้าส่งไม่ได้ หน้าแอดมินจะขึ้นเหตุผล และถ้าเป็นปัญหาที่ทำให้ทุกฉบับส่งไม่ได้ (รหัสผ่านหรือ API key ผิด, ผู้ส่งไม่ได้รับอนุญาต, โควตาหมด, ต่อเซิร์ฟเวอร์ไม่ได้) ระบบจะหยุดส่งทั้งชุดทันที แก้แล้วกด "ส่งอีกครั้งให้ที่ไม่สำเร็จ"
+Every method: if sending fails, the admin page shows the reason. Problems that would make every email fail (wrong
+password or API key, sender not allowed, quota used up, cannot reach the server) stop the whole batch at once; fix the
+cause and press "ส่งอีกครั้งให้ที่ไม่สำเร็จ" (retry failed).
 
-| ข้อความ | แก้อย่างไร |
+| Message | Fix |
 |---|---|
-| Brevo ไม่รับ API key | ตรวจ `BREVO_API_KEY` · ถ้าใน Brevo เปิด **Authorized IPs** ไว้ ต้องเพิ่ม IP ของเครื่องที่รันเซิร์ฟเวอร์ (หรือปิดการจำกัด IP) |
-| อีเมลผู้ส่งยังไม่ได้ยืนยัน | ทำข้อ 2 ให้เสร็จ และ `MAIL_FROM` ต้องตรงกับอีเมลที่ยืนยัน |
-| โควตาหมด | แผนฟรีส่งได้ 300 ฉบับต่อวัน เกินกว่านั้นรอวันถัดไปแล้วกด "ส่งอีกครั้งให้ที่ไม่สำเร็จ" หรือซื้อแผนที่ส่งได้มากกว่า · งานที่มีเกิน 300 คนควรเริ่มส่งล่วงหน้าหลายวัน |
-| หน้าแอดมินบอก "ยังไม่ได้ตั้งค่าการส่งอีเมล" หรือ "ตั้งค่า … ยังไม่ครบ" (ทุกวิธีส่ง) | ข้อความบอกชื่อค่าที่ขาด ใส่ใน `.env` แล้วรันเซิร์ฟเวอร์ใหม่ · ถ้าใส่แล้วยังขึ้น ดูว่าตอนเปิดเซิร์ฟเวอร์มีบรรทัด "อ่านค่าตั้งจาก .env" ไหม และ `MAIL_FROM` ผิดรูปหรือเปล่า (จะมีข้อความเตือน) |
+| Brevo rejects the API key | Check `BREVO_API_KEY`. If **Authorized IPs** is on in Brevo, add the server machine's IP (or turn the restriction off). |
+| Sender not verified | Finish step 2, and `MAIL_FROM` must match the verified address. |
+| Quota used up | The free plan sends 300 a day. Wait for the next day and press "ส่งอีกครั้งให้ที่ไม่สำเร็จ" (retry failed), or buy a larger plan. Events over 300 people should start sending several days ahead. |
+| The admin page says email is not set up, or a setting is incomplete (any method) | The message names the missing setting. Add it to `.env` and restart. If it still shows, check the console printed that it read settings from `.env`, and whether `MAIL_FROM` is malformed (there will be a warning). |
 
-อีเมล ชื่อ และสถานะการส่งเก็บอยู่ใน `data/db.json` เหมือนข้อมูลอื่น ถ้าเซิร์ฟเวอร์หยุดระหว่างส่ง คนที่ยังไม่ได้ส่งจะกลับเป็น "ยังไม่ส่ง" ส่วนฉบับที่กำลังส่งอยู่ตอนนั้นจะขึ้นเป็น "ส่งไม่สำเร็จ" (เพราะไม่รู้แน่ว่าถึงหรือไม่) กดส่งต่อได้
+Addresses, names and send status are stored in `data/db.json` with everything else. If the server stops mid-send,
+people not yet sent go back to "not sent", and the email being sent at that moment is marked "failed" (because it is
+unknown whether it arrived); just send again.
 
-## เอาขึ้นเว็บทีหลัง
+## Putting it online later
 
-ระบบเป็น Node server ที่ต้องรันค้างไว้และต้องเขียนไฟล์ได้ จึง**ใช้กับ Vercel หรือ Netlify แบบ serverless ไม่ได้**
-ที่ใช้ได้มีเช่น VPS, Railway, Render หรือ Fly.io โดยต้องมีดิสก์ถาวร (persistent volume) ให้ `DATA_DIR` ชี้ไป
+The app is a long-running Node server that writes files, so it **does not work on serverless Vercel or Netlify**.
+Options include a VPS, Railway, Render or Fly.io, with a persistent volume for `DATA_DIR`.
 
-1. ตั้ง `ADMIN_PASSWORD` แล้วชี้ `DATA_DIR` ไปที่ volume ถาวร และตั้ง `TRUST_PROXY=1` เพราะโฮสต์พวกนี้ทำ https อยู่ข้างหน้า (ไม่ต้องตั้ง `HTTPS_PORT`)
-2. คำสั่งรันคือ `npm start` (โฮสต์ส่วนใหญ่ส่งค่า `PORT` มาให้เอง)
-3. ใส่โดเมนจริง เช่น `https://vote.example.com` ในช่อง "ลิงก์ที่ QR พาไป" ที่แท็บ "ตั้งค่างาน" ถ้าพิมพ์บัตรรหัสไปแล้ว ต้องพิมพ์ใหม่ เพราะ QR บนบัตรชี้ไปที่ลิงก์เดิม ส่วนอีเมลที่ส่งไปแล้วกด "ส่งใหม่ให้ … คนนี้" ในกล่องส่งรหัสทางอีเมลได้
-4. รันแค่ **instance เดียว** เพราะข้อมูลอยู่ในหน่วยความจำของ process นั้น
-5. ถ้ามี nginx อยู่ข้างหน้า ควรปิด buffering ของ `/api/stream`, `/api/screen/stream` และ `/api/admin/stream` เพราะเป็น Server-Sent Events (server ส่ง header `X-Accel-Buffering: no` ให้แล้ว) ถ้าไม่ได้ปิด หน้าเว็บยังใช้ได้ แต่จะอัปเดตช้าลงเป็นทุก 2–3 วินาที (ดูหัวข้อถัดไป)
+1. Set `ADMIN_PASSWORD`, point `DATA_DIR` at the persistent volume, and set `TRUST_PROXY=1` because these hosts
+   terminate https in front (do not set `HTTPS_PORT`).
+2. The start command is `npm start` (most hosts provide `PORT`).
+3. Enter the real address, for example `https://vote.example.com`, in "ลิงก์ที่ QR พาไป" (link the QR opens) on the
+   "ตั้งค่างาน" (event settings) tab. Cards printed before then must be reprinted, because their QR points at the old
+   link; already emailed people can be resent from the email box.
+4. Run **one instance only**: data lives in that process's memory.
+5. If nginx is in front, turn off buffering for `/api/stream`, `/api/screen/stream` and `/api/admin/stream`, which are
+   Server-Sent Events (the server already sends `X-Accel-Buffering: no`). If buffering stays on, pages still work but
+   update every 2–3 seconds instead (see the next section).
 
-### การอัปเดตสด และเมื่ออยู่หลัง proxy / tunnel
+### Live updates, and running behind a proxy or tunnel
 
-หน้าคนโหวต จอใหญ่ และหน้าแอดมิน ดึงสถานะครั้งแรกด้วยคำขอธรรมดา (`/api/state`, `/api/screen/state`, `/api/admin/state`) จึงเปิดขึ้นได้เสมอ แล้วรับการอัปเดตทาง stream
-ถ้า stream ไม่มีข้อมูลมาภายใน 6 วินาที (proxy กักข้อมูลไว้) หน้าเว็บจะปิด stream ทิ้งเพื่อไม่ให้ค้างการเชื่อมต่อ และเปลี่ยนเป็นถามสถานะซ้ำทุก ~3 วินาที (จอใหญ่ทุก ~2 วินาที) เครื่องนั้นจะไม่ลอง stream อีก 6 ชั่วโมง
-ถ้า stream เคยใช้ได้แล้วเงียบไปเกิน 40 วินาที ก็จะถามซ้ำแทนเช่นกัน และลอง stream ใหม่ทุก 30 วินาที
+The voter page, big screen and admin page load their first state with a plain request (`/api/state`,
+`/api/screen/state`, `/api/admin/state`), so they always open, and then receive updates over a stream.
+If the stream delivers nothing within 6 seconds (a proxy is holding it back), the page drops the stream so it does not
+hold a connection open, and polls every ~3 seconds instead (the big screen every ~2 seconds). That device does not try
+the stream again for 6 hours.
+If a stream that was working goes quiet for over 40 seconds, the page polls too, and retries the stream every 30
+seconds.
 
-**Cloudflare Quick Tunnel** (`cloudflared tunnel --url ...` ได้ลิงก์ `*.trycloudflare.com`) ไม่รองรับ SSE และรับคำขอค้างพร้อมกันได้ราว 200 คำขอต่อ tunnel
-เมื่อเปิดผ่านลิงก์ `trycloudflare.com` หน้าเว็บจะไม่เปิด stream เลย ใช้การถามซ้ำอย่างเดียว ฝั่ง server ก็ไม่ค้าง stream ไว้กับคำขอที่มาทางลิงก์นี้ (ส่งสถานะครั้งเดียวแล้วปิด)
-ทดสอบแล้วว่ามือถือจำลอง 200 เครื่องเปิดหน้าค้าง แล้วสแกน QR และโหวตพร้อมกัน ผ่าน tunnel ได้ครบทุกคำขอ (ไม่มี 429)
-Quick Tunnel ไม่มีการรับประกันความเสถียร (uptime) และลิงก์เปลี่ยนทุกครั้งที่รันใหม่ ถ้าเป็นงานจริงควรใช้ Named Tunnel หรือโดเมนจริง
+**Cloudflare Quick Tunnel** (`cloudflared tunnel --url ...`, giving a `*.trycloudflare.com` link) does not support SSE
+and allows about 200 in-flight requests per tunnel.
+When opened through a `trycloudflare.com` link, pages never open a stream and only poll, and the server does not hold
+streams for requests arriving through that link (it sends the state once and closes).
+Tested with 200 simulated phones keeping the page open, then scanning QR codes and voting at the same time through the
+tunnel: every request succeeded (no 429).
+Quick Tunnels have no uptime guarantee and the link changes on every run. For a real event, use a named tunnel or a
+real domain.
 
-สำรองข้อมูลได้โดยคัดลอกทั้งโฟลเดอร์ `data/`
+Back up by copying the whole `data/` folder.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
