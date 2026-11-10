@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#b42318">
+<title>โหวต</title>
+<link rel="stylesheet" href="/fonts/anuphan/400.css">
+<link rel="stylesheet" href="/fonts/anuphan/600.css">
+<link rel="stylesheet" href="/fonts/anuphan/700.css">
+<link rel="stylesheet" href="/css/base.css">
+<link rel="stylesheet" href="/css/vote.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap topbar-in">
+    <button id="back" class="btn btn-ghost btn-sm back" hidden aria-label="กลับไปหน้ารายการหัวข้อ"></button>
+    <h1 id="event-name" class="event-name">กำลังโหลด…</h1>
+  </div>
+</header>
+<div id="offline" class="wrap" hidden>
+  <div class="banner banner-warning" role="status"><span id="offline-icon"></span><span>หลุดการเชื่อมต่อ กำลังต่อใหม่… โหวตที่บันทึกแล้วไม่หาย</span></div>
+</div>
+<main id="app" class="wrap" aria-live="polite">
+  <div class="center-state"><div class="spinner" role="img" aria-label="กำลังโหลด"></div></div>
+</main>
+<div id="bar" class="vote-bar" hidden></div>
+<script src="/js/common.js"></script>
+<script src="/js/pow.js"></script>
+<script src="/js/vote.js"></script>
+</body>
+</html>

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>พิมพ์บัตรรหัสโหวต</title>
+<link rel="stylesheet" href="/fonts/anuphan/400.css">
+<link rel="stylesheet" href="/fonts/anuphan/700.css">
+<link rel="stylesheet" href="/css/base.css">
+<style>
+  @page { size: A4; margin: 8mm; }
+  .bar { display: flex; gap: var(--sp-3); align-items: center; flex-wrap: wrap; padding: var(--sp-4); background: var(--color-surface); border-bottom: 1px solid var(--color-border); position: sticky; top: 0; }
+  .bar h1 { font-size: var(--fs-18); flex: 1; }
+  .sheet { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; padding: var(--sp-4); max-width: 210mm; margin: 0 auto; background: #fff; }
+  .ticket { border: 1px dashed #b9aeab; padding: 3mm; display: grid; grid-template-columns: 24mm minmax(0, 1fr); gap: 3mm; align-items: center; height: 38mm; break-inside: avoid; }
+  .ticket svg { width: 24mm; height: 24mm; display: block; }
+  .ticket .ev { font-size: 9pt; font-weight: 700; line-height: 1.4; overflow: hidden; max-height: 2.8em; }
+  .ticket .lbl { font-size: 7.5pt; color: #6b5f5c; margin-top: 1mm; }
+  .ticket .code { font-size: 17pt; font-weight: 700; font-family: ui-monospace, Menlo, Consolas, monospace; line-height: 1.3; white-space: nowrap; }
+  .ticket .code.long { font-size: 13.5pt; }
+  .ticket .how { font-size: 6.5pt; color: #6b5f5c; line-height: 1.4; overflow-wrap: anywhere; }
+  @media print { .bar { display: none; } body { background: #fff; } .sheet { padding: 0; } }
+</style>
+</head>
+<body>
+<div class="bar">
+  <h1 id="title">บัตรรหัสโหวต</h1>
+  <label class="row small" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="unused"> เฉพาะรหัสที่ยังไม่ถูกใช้</label>
+  <button class="btn btn-primary" id="print">พิมพ์</button>
+</div>
+<div id="msg"></div>
+<div class="sheet" id="sheet"></div>
+<script src="/js/common.js"></script>
+<script src="/js/print.js"></script>
+</body>
+</html>
