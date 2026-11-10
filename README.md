@@ -8,6 +8,9 @@ No database to set up: data lives in `data/db.json` and contestant photos in `da
 
 The screens are in Thai. Buttons and labels below are quoted exactly as they appear, with an English translation.
 
+**Security:** version 1.0.0 was checked with ai-secure-audit 0.0.3 and 19 hand-made cheating attempts. See
+[SECURITY.md](SECURITY.md) for what passed, the accepted limits, and what is not tested yet.
+
 ## Run it locally
 
 Needs Node 18 or later.
