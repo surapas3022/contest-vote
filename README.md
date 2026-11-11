@@ -350,6 +350,34 @@ tunnel: every request succeeded (no 429).
 Quick Tunnels have no uptime guarantee and the link changes on every run. For a real event, use a named tunnel or a
 real domain.
 
+### Why Server-Sent Events and polling, not WebSocket
+
+If you fork this app, here is why it updates pages this way, so you can tell whether the reasons still hold for you.
+
+- **Server-Sent Events (SSE) for live updates.** What must reach phones live travels one way: the server tells them
+  a topic opened or closed, and tells the big screen and admin page that counts changed. SSE is plain HTTP that
+  Express can serve without a library, browsers have `EventSource` built in, and it reconnects by itself when a phone
+  switches between Wi-Fi and mobile data or wakes from a locked screen.
+- **Votes stay ordinary `POST` requests.** A guest votes a few times per event and needs an answer each time ("saved"
+  or "this topic is closed"). Keeping votes on normal routes means they go through the same session cookie, rate
+  limits, cross-site request check and admin check that the security tests already cover (see
+  [SECURITY.md](SECURITY.md)).
+- **Polling as the fallback.** Some proxies, company networks and Cloudflare Quick Tunnels hold streams back. Any
+  live channel can be blocked like this, so polling has to exist whichever one is used. Polling here is cheap: every
+  device gets the same cached copy of the state, the server answers `304 Not Modified` when nothing changed, phones
+  spread their requests with a random ±20% delay, and hidden tabs stop polling.
+- **Why not WebSocket.** WebSocket is the better tool when data flows often in both directions, such as chat,
+  multiplayer games or live cursors. This app has no such flow, and switching would mean:
+  - another dependency (`ws` or `socket.io`) to keep patched;
+  - rebuilding the session, rate-limit and admin checks for a second channel;
+  - its own attack to defend against. Cross-Site WebSocket Hijacking: browsers apply no CORS check to WebSocket and
+    send the user's cookies with it, so the server has to check `Origin` itself;
+  - writing reconnect code by hand.
+
+  Live updates would probably also work through a Quick Tunnel (not tested). That only matters while testing; on a
+  real server with buffering turned off, SSE is just as fast. Both hold one open connection per device, so server
+  load is similar at a few hundred phones.
+
 Back up by copying the whole `data/` folder.
 
 ## License
