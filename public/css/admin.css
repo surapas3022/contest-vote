@@ -68,3 +68,23 @@ table.results td.num, table.results th.num { text-align: right; font-variant-num
 .m-row .st { flex: 1 1 200px; min-width: 0; display: grid; gap: var(--sp-1); line-height: 1.5; overflow-wrap: anywhere; }
 .m-row .badges { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
 .m-row .acts { display: flex; gap: var(--sp-1); margin-left: auto; }
+
+/* first-run checklist */
+.setup { border-color: var(--color-primary); }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-2); }
+.step { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3); border: 1px solid var(--color-border); border-radius: var(--radius-control); flex-wrap: wrap; }
+.step-no { width: 32px; height: 32px; flex: none; border-radius: 50%; display: grid; place-items: center; font-weight: 700; border: 2px solid var(--color-primary); color: var(--color-primary); font-variant-numeric: tabular-nums; }
+.step-no .icon { width: 18px; height: 18px; stroke-width: 3; }
+.step-body { flex: 1 1 240px; min-width: 0; display: grid; gap: 2px; line-height: 1.5; overflow-wrap: anywhere; }
+.step.done { background: var(--color-surface-2); }
+.step.done .step-no { background: var(--color-success); border-color: var(--color-success); color: #fff; }
+.step.done b { color: var(--color-text-muted); }
+.step-ok { color: var(--color-success); font-weight: 600; }
+#mode-box, #reset-box { scroll-margin-top: 120px; }
+
+/* cheers list */
+.cheer-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-2); max-height: 22rem; overflow-y: auto; }
+.cheer-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--sp-1) var(--sp-3); align-items: center; padding: var(--sp-2) 0; border-bottom: 1px solid var(--color-border); }
+.cheer-row .row { grid-column: 1 / -1; justify-content: flex-end; }
+.cheer-v { overflow-wrap: anywhere; line-height: 1.5; }
+.cheer-row.is-hidden .cheer-v { text-decoration: line-through; color: var(--color-text-muted); }

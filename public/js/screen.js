@@ -14,7 +14,65 @@ document.addEventListener('keydown', (e) => { if (e.key === 'f' || e.key === 'F'
 document.addEventListener('fullscreenchange', () => { fsBtn.hidden = !!document.fullscreenElement; });
 
 // the stream when it delivers; otherwise the snapshot every 2 s (live bars stay close to real time)
-liveStream('/api/screen/stream', (data) => { state = data; draw(); }, (ok) => { $('#conn').hidden = ok; }, { pollMs: 2000 });
+liveStream('/api/screen/stream', (data) => {
+  state = data; draw();
+  // cheers belong to the intro only: leaving it clears whatever is still floating
+  if (data.screen.mode !== 'intro') { cheerBox.replaceChildren(); textQueue.length = 0; return; }
+  if (data.cheers) { hideCheers(data.cheers.hidden); showCheers(data.cheers.items); }
+}, (ok) => { $('#conn').hidden = ok; }, { pollMs: 2000, events: { cheers: showCheers } });
+
+/* ---------- cheers: emoji rise on the right, text slides across in lanes ---------- */
+// The same cheer can arrive twice (stream push, then inside a later snapshot): ids keep it once.
+const cheerSeen = new Set();
+const cheerGone = new Set();
+const CHEER_MAX_EMOJI = 40, CHEER_MAX_TEXT = 8, CHEER_LANES = 6;
+const laneFreeAt = Array(CHEER_LANES).fill(0);
+const textQueue = [];
+const cheerBox = $('#cheers');
+function showCheers(items) {
+  if (!state || state.screen.mode !== 'intro') return;
+  for (const c of items || []) {
+    if (cheerSeen.has(c.id) || cheerGone.has(c.id)) continue;
+    cheerSeen.add(c.id);
+    if (c.k === 'e') floatEmoji(c.v); else { textQueue.push(c); if (textQueue.length > 20) textQueue.shift(); }
+  }
+  if (cheerSeen.size > 3000) cheerSeen.clear();
+  pumpText();
+}
+function hideCheers(ids) {
+  for (const id of ids || []) {
+    if (cheerGone.has(id)) continue;
+    cheerGone.add(id);
+    const el = cheerBox.querySelector(`[data-id="${id}"]`); if (el) el.remove();
+    const q = textQueue.findIndex((c) => c.id === id); if (q >= 0) textQueue.splice(q, 1);
+  }
+}
+function floatEmoji(v) {
+  if (cheerBox.childElementCount - cheerBox.querySelectorAll('.ch-t').length >= CHEER_MAX_EMOJI) return;
+  const el = document.createElement('span');
+  el.className = 'ch-e'; el.textContent = v;
+  el.style.left = 80 + Math.random() * 15 + 'vw';
+  el.style.setProperty('--dx', (Math.random() * 10 - 5).toFixed(1) + 'vw');
+  el.style.animationDuration = (2.8 + Math.random() * 1.2).toFixed(2) + 's';
+  el.addEventListener('animationend', () => el.remove());
+  cheerBox.append(el);
+}
+function pumpText() {
+  while (textQueue.length && cheerBox.querySelectorAll('.ch-t').length < CHEER_MAX_TEXT) {
+    const now = Date.now();
+    const lane = laneFreeAt.indexOf(Math.min(...laneFreeAt));
+    if (laneFreeAt[lane] > now) { setTimeout(pumpText, laneFreeAt[lane] - now + 20); return; }
+    const c = textQueue.shift();
+    const el = document.createElement('span');
+    el.className = 'ch-t'; el.dataset.id = c.id; el.textContent = c.v; // text only, never markup
+    el.style.top = 14 + lane * 11 + 'vh';
+    el.addEventListener('animationend', () => { el.remove(); pumpText(); });
+    cheerBox.append(el);
+    // the next one in this lane starts once this one's tail is on screen plus a gap
+    const w = el.offsetWidth, speed = (innerWidth + w) / 11000; // px per ms (11 s crossing)
+    laneFreeAt[lane] = now + (w + innerWidth * 0.06) / speed;
+  }
+}
 
 // the server always encodes its own vote link; ?u= only makes the image reload when that link changes
 const qrSrc = () => '/api/qr.svg?u=' + encodeURIComponent(state.voteUrl);
@@ -23,11 +81,12 @@ const qrPanel = () => `<aside class="qr-panel"><img src="${qrSrc()}" alt="QR ส
 function draw() {
   const s = state.screen;
   const topic = state.topics.find((t) => t.id === s.topicId) || null;
-  const newSig = JSON.stringify([state.event.name, state.voteUrl, s.topicId, s.mode, s.revealStep, topic && topic.status, topic && topic.contestants, !topic && state.topics.map((t) => [t.title, t.status])]);
+  const newSig = JSON.stringify([state.event.name, state.voteUrl, s.topicId, s.mode, s.revealStep, s.intro, topic && topic.status, topic && topic.contestants, !topic && state.topics.map((t) => [t.title, t.status])]);
   if (newSig !== sig) {
     sig = newSig;
     const el = $('#stage');
-    if (!topic) el.innerHTML = lobby();
+    if (s.mode === 'intro' && s.intro) el.innerHTML = intro(s.intro);
+    else if (!topic) el.innerHTML = lobby();
     else if (s.mode === 'reveal' && topic.status === 'closed') el.innerHTML = reveal(topic, s);
     else if (s.mode === 'live') el.innerHTML = live(topic);
     else el.innerHTML = hidden(topic);
@@ -49,7 +108,7 @@ function lobby() {
   return `<div class="lobby">
     <img class="qr-big" src="${qrSrc()}" alt="QR สำหรับเข้าโหวต">
     <div><h1>${esc(state.event.name)}</h1>
-      <p class="scan">สแกน QR เพื่อโหวต</p><p class="url">${esc(state.voteUrl)}</p>
+      <p class="scan">สแกน QR เพื่อเข้าร่วม</p><p class="url">${esc(state.voteUrl)}</p>
       ${open.length ? `<ul>${open.map((t) => `<li>${esc(t.title)}</li>`).join('')}</ul>` : ''}
     </div></div>`;
 }
@@ -61,6 +120,23 @@ function hidden(topic) {
       ${c.photo ? `<img class="ph" src="${esc(c.photo)}" alt="">` : `<div class="photo-ph">${esc(c.number)}</div>`}
       <span class="nm"><span class="no">${esc(c.number)}</span> ${esc(c.name)}</span></div>`).join('')}</div>` : '<p class="empty-stage">ยังไม่มีผู้เข้าประกวด</p>'}
     </div>${qrPanel()}</div>`;
+}
+
+// one contestant at a time while they walk on stage; the admin moves next / back
+function intro(it) {
+  const c = it.shown[it.index];
+  const strip = Array.from({ length: it.total }, (_, i) => {
+    const p = it.shown[i];
+    const cls = i === it.index ? 'now' : p ? 'done' : 'next';
+    return `<li class="${cls}">${p ? (p.photo ? `<img src="${esc(p.photo)}" alt="">` : `<span>${esc(p.number)}</span>`) : ''}</li>`;
+  }).join('');
+  return `<header class="compact"><p class="s-event">${esc(state.event.name)}</p><div class="s-head"><h1 class="s-title">${esc(it.title)}</h1>
+      <p class="s-sub nowrap">แนะนำผู้เข้าประกวด · คนที่ ${it.index + 1} จาก ${it.total}</p></div></header>
+    <div class="intro ${c.photo ? '' : 'no-photo'}" data-i="${it.index}">
+      <div class="i-info"><span class="i-lbl">หมายเลข</span><span class="i-no">${esc(c.number)}</span><span class="i-name">${esc(c.name)}</span>
+        <ol class="i-strip" aria-hidden="true">${strip}</ol></div>
+      ${c.photo ? `<img class="i-photo" src="${esc(c.photo)}" alt="">` : ''}
+    </div>`;
 }
 
 const gridCols = (n) => (n <= 5 ? 5 : n <= 12 ? 6 : n <= 21 ? 7 : 10);

@@ -5,8 +5,9 @@ People should start with [README.md](README.md).
 
 ## What this is
 
-A contest voting app for company parties. One Node process serves three pages: voters (`/`), admin (`/admin`) and the
-big screen (`/screen`). State is kept in memory and written to `data/db.json`.
+A contest voting app for company parties. One Node process serves the pages: guests (`/`), admin (`/admin`), the big
+screen (`/screen`), and the registration desk (`/checkin`, admin) with its claim page (`/claim`). State is kept in
+memory and written to `data/db.json`.
 
 | Path | What it holds |
 |---|---|
@@ -14,6 +15,8 @@ big screen (`/screen`). State is kept in memory and written to `data/db.json`.
 | `smtp.js` | Small SMTP client for Gmail and company servers (no nodemailer) |
 | `env.js` | Loads `.env`; values from the real environment win |
 | `public/` | Pages and browser code. `js/common.js` has the shared live-update logic, `js/pow.js` the name-mode puzzle |
+| `docs/checkin-guide.md` | Thai guide for registration-desk staff |
+| `Dockerfile`, `compose.yaml` | Container run; data in the `/data` volume |
 | `scripts/smoke-test.js` | End-to-end test, including 200 simultaneous voters and email via a local Brevo stand-in |
 | `scripts/mail-test.js` | Gmail/SMTP tests against local stand-in mail servers (needs `openssl`) |
 | `scripts/demo.js` | Sample data on port 3456, admin password `demo` |
@@ -32,7 +35,8 @@ Run both tests before you finish any change, and say plainly if you could not ru
 ## Conventions
 
 - Node 18 or later. Do not use APIs that need a newer Node.
-- Keep runtime dependencies to the current three (`express`, `qrcode`, `@fontsource/anuphan`). Ask before adding one.
+- Keep runtime dependencies to the current four (`express`, `qrcode`, `@fontsource/anuphan`, `jsqr` for reading a
+  card picture on phones without a built-in QR reader). Ask before adding one.
 - Text users see on screen, in emails and in error messages is **Thai**. Code comments, docs and commit messages are
   **English**.
 - Settings come from environment variables or `.env`. Never commit `.env` or `data/`.
@@ -59,6 +63,14 @@ Each line below fixes a real problem found by a security check. Keep it working,
 - **Uploads are checked by content.** Photos must really be JPEG, PNG or WEBP; the declared type is not trusted.
 - **User text is escaped** in pages and emails, line breaks are removed from email headers, and CSV cells that start
   with `=`, `+`, `-` or `@` are neutralised.
+- **Desk tickets are one-time and never show a code.** The desk receives only a QR picture; a ticket is used up by the
+  first claim (checked with 30 at once), expires after a minute, and is replaced by "เปลี่ยน QR".
+- **Topics not yet open stay private except during the intro**, and then only the contestants already introduced
+  are sent.
+- **Cheers are only accepted during the intro, from joined guests, and are never written to disk.** Fixed emoji set,
+  short single-line text, no links, blocked words, per-guest and room-wide limits, no sender identity sent anywhere.
+- **Names given by the admin are fixed.** The server never accepts a name from a phone; a self-set name stays in that
+  phone's storage.
 - **Pages work without the live stream.** First state comes from a plain request and pages poll when the stream is
   blocked (Cloudflare Quick Tunnels carry no Server-Sent Events).
 
@@ -70,3 +82,6 @@ State these to users instead of hiding them:
 - Name mode stops names that are not on the list but cannot stop impersonation.
 - "Sent" means the mail service accepted the email, not that it reached the inbox.
 - Email addresses and names are personal data stored in plain text in `data/db.json`; delete them after the event.
+- Someone filming the registration desk with a script could keep claiming cards; desk staff watch for it.
+- The cheer word list cannot catch every spelling; an admin watches the cheer card during the intro.
+- Docker Desktop shows every phone as one address, so per-address limits count the whole room together.

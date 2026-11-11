@@ -1,14 +1,17 @@
 # Contest voting for company parties
 
-A small web app for costume and performance contests at events: guests vote from their phones, an admin runs the
-event, and a projector shows live results and a 3 → 2 → 1 reveal.
+A small web app for costume and performance contests at events: guests join from their phones, cheer while each
+contestant is introduced on the projector, then vote; an admin runs the event, and the projector shows live results and
+a 3 → 2 → 1 reveal.
 
-Three pages, served by one Node process: voters (`/`), admin (`/admin`) and the big screen (`/screen`).
+Pages, served by one Node process: guests (`/`), admin (`/admin`), the big screen (`/screen`), and optionally a
+registration desk (`/checkin`) where guests scan to get their vote card (`/claim`).
 No database to set up: data lives in `data/db.json` and contestant photos in `data/uploads/`.
 
 The screens are in Thai. Buttons and labels below are quoted exactly as they appear, with an English translation.
 
-**Security:** version 1.0.0 was checked with ai-secure-audit 0.0.3 and 19 hand-made cheating attempts. See
+**Security:** version 1.1.0 was checked with ai-secure-audit 0.0.4, 19 hand-made cheating attempts and tests for the
+desk tickets, the intro and cheers. See
 [SECURITY.md](SECURITY.md) for what passed, the accepted limits, and what is not tested yet.
 
 ## Run it locally
@@ -35,6 +38,8 @@ on the Wi-Fi. Phones must be on the same Wi-Fi. If `ADMIN_PASSWORD` is not set, 
 | `TRUST_PROXY` | off | Set only when an https proxy or host sits in front, for example `1` (trust one proxy). Turning it on without a proxy lets people fake their IP and dodge the rate limits. |
 | `DATA_DIR` | `./data` | Where `db.json` and photos are stored |
 | `ENV_FILE` | `.env` next to `server.js` | Settings file, if you keep it elsewhere |
+| `PUBLIC_URL` | this machine's Wi-Fi address | The address phones use, for QR codes and links. Needed in Docker (see "Run with Docker"). "ลิงก์ที่ QR พาไป" (link the QR opens) on the admin page overrides it. |
+| `HOST_PORT` | `3000` | Docker only: the port on this machine. Use the same port in `PUBLIC_URL`. |
 | `MAIL_PROVIDER` | guessed from what is set | How vote codes are emailed: `gmail`, `smtp` or `brevo`. See "Email vote codes". Leave this group out if you do not use email. |
 | `MAIL_FROM` | the signed-in account (Gmail/SMTP) | Sender, for example `vote@company.com` or `'Party Team <vote@company.com>'`. Without a name, the event name is used. Required for Brevo. |
 | `GMAIL_USER` / `GMAIL_APP_PASSWORD` | – | Gmail account and its 16-character App Password. See "Using Gmail". |
@@ -73,6 +78,39 @@ ADMIN_PASSWORD=a-long-password HTTPS_PORT=3443 npm start
 - Admin login is rate-limited. If someone floods password guesses from the same network, the admin may be unable to
   log in **again** for a while, so log in on the control device before the event starts (sessions last 24 hours).
 
+### Run with Docker
+
+Needs Docker with Compose v2 (`docker compose`, not the old `docker-compose`).
+
+```bash
+cp .env.example .env      # set ADMIN_PASSWORD, and PUBLIC_URL (below)
+docker compose up -d --build
+docker compose logs -f    # the same startup messages as npm start
+```
+
+- **Set `PUBLIC_URL`** in `.env` to the address phones use, for example `PUBLIC_URL=http://192.168.1.20:3000`.
+  Inside a container the server only sees the container's own address, so without it the QR codes point somewhere
+  phones cannot reach. The console warns when it is missing. If port 3000 is taken on this machine, set
+  `HOST_PORT=3100` and use that port in `PUBLIC_URL`. "ลิงก์ที่ QR พาไป" (link the QR opens) in the "ตั้งค่างาน"
+  tab overrides it.
+- Data (votes, photos, the https certificate) lives in the `vote-data` volume and survives `docker compose down`
+  and rebuilds. Back it up with
+  `docker run --rm -v contest-vote_vote-data:/data -v "$PWD":/out alpine tar czf /out/vote-data.tgz -C /data .`
+  (the volume name is the folder name plus `_vote-data`; see `docker volume ls`). Delete it after the event with
+  `docker compose down -v`.
+- For https on the admin page, add `HTTPS_PORT=3443` to `.env` and uncomment the `3443:3443` line in
+  `compose.yaml`. Publish it **on the same number** inside and outside, because the admin page redirects to that port.
+- Use `docker compose`, which reads `.env` the same way the app does. `docker run --env-file .env` does not: it keeps
+  the quotes, so a value written `'abcd efgh'` arrives with the `'` marks and the password no longer matches.
+- `SMTP_CA_FILE` must be a path inside the container: mount the file (for example
+  `- ./company-ca.pem:/app/company-ca.pem:ro` under `volumes`) and set `SMTP_CA_FILE=/app/company-ca.pem`.
+- The server runs as the unprivileged `node` user and stops cleanly on `docker compose stop` (data is saved first).
+  Run one container only: data lives in the process's memory.
+- **Docker Desktop (Mac, Windows) shows every phone to the app as one address.** Limits counted per address (wrong
+  admin passwords, wrong vote codes) then count the whole room together, so one person guessing can make everyone
+  wait. Docker on a Linux server keeps each phone's own address. For a real event, prefer Docker on Linux or run
+  `npm start` directly.
+
 Try it with sample data: `node scripts/demo.js`, then open http://localhost:3456/admin (password `demo`).
 Full test, including 200 simultaneous voters: `node scripts/smoke-test.js` (email is tested against a local stand-in
 for Brevo; nothing is sent).
@@ -80,22 +118,86 @@ Gmail/SMTP sending against local stand-in mail servers: `node scripts/mail-test.
 
 ## On the day
 
+The first time the admin page opens, a checklist at the top walks through steps 1–3 and ticks them off by itself.
+
 1. **Event settings**: set the event name and choose how people get in (new events start on vote codes, "รหัสโหวต").
-   Create about 10% more codes than guests, then press "พิมพ์บัตรรหัส" (print code cards). A4 fits 21 cards; each
-   card has a QR code with its code built in, so scanning gets the guest straight in. If you choose names
-   ("กรอกชื่อ"), paste the staff list first.
-   - You can email codes instead of, or as well as, printing cards. See "Email vote codes".
+   Then give out codes in any mix of these ways:
+   - Print cards: create about 10% more codes than guests, then press "พิมพ์บัตรรหัส" (print code cards). A4 fits 21
+     cards; each card has a QR code with its code built in, so scanning gets the guest straight in.
+   - Email codes. See "Email vote codes".
+   - A registration desk where guests scan a screen to get a card on their phone. See "Registration desk".
+
+   If you choose names ("กรอกชื่อ"), paste the staff list first.
 2. **Contest topics**: create topics, set how many contestants each guest may pick, and add contestants with photos.
 3. **Rehearse**: vote from real phones, then go to "ตั้งค่างาน" (event settings) → "ล้างผลโหวตทั้งหมด" (clear all
    votes).
 4. **Big screen**: open `/screen` on the projector computer and press F for full screen. Control it from the
    "จอใหญ่" (big screen) tab on the admin page, from a phone if you like.
    - Show the lobby (QR and event name) or a specific topic.
+   - "แนะนำตัว" (introduce) shows one contestant at a time, large photo, number and name, while they walk on
+     stage. Guests can cheer from their phones during this part. See "Contestant intro and cheers". This is the only
+     mode that shows a topic that is not open for voting yet; the other modes need the topic open.
    - "ซ่อนคะแนน" (hide scores) shows only how many people have voted; "โชว์คะแนนสด" (show live scores) shows a bar
      chart.
    - "ประกาศผล" (announce results) works once voting is closed. Then reveal 3rd → 2nd → 1st one step at a time
      with the host. Confetti on 1st place.
 5. **Results**: visible at any time, and downloadable as CSV that opens in Excel with Thai text intact.
+
+A typical evening: guests get in as they arrive (cards, email or the desk) → introduce each contestant on the big
+screen while guests cheer → performances (outside this app) → open voting → close → announce.
+
+## What guests see
+
+- The entry form is open from the start, before any topic opens, so guests can join during the introductions. It
+  says the code is used all evening: cheering during the intro, then voting.
+- **"เปิดจากรูปบัตรที่บันทึกไว้"** (open from a saved card picture): pick a picture of the card, a screenshot or a
+  photo of a paper card. The phone reads the QR itself (the browser's own reader, or the bundled jsQR when there is
+  none, as on iPhone Safari); the picture is not uploaded. It uses the card's signed link, so it works like scanning.
+- At the top of the list: the vote code is hidden as `••••-••••` until the eye button is pressed. Guests with a card
+  that has no name (printed or from the desk) can set a name for themselves; it stays on that phone only and is never
+  sent. A name the admin gave (the email list, or the staff list in name mode) is shown as is and cannot be changed.
+- Topics come in three groups: waiting for your vote, voted, closed. Contestant photos open full size. After saving,
+  the chosen numbers are shown large.
+
+## Registration desk
+
+For guests who register on arrival. In code mode, open "ตั้งค่างาน" (event settings) → "จุดลงทะเบียนหน้างาน"
+(registration desk) → "เปิดหน้าจุดลงทะเบียน" on a tablet or laptop at the desk, signed in as admin. It is a separate
+screen from the big screen.
+
+- The desk shows a QR for a **one-time ticket**, never a vote code, so a photo of the desk is worth nothing on its own.
+- The guest scans it on their phone and presses **"รับบัตร"** (get card). Only then is a vote code made, and only that
+  phone sees it. The desk says "รับบัตรแล้ว · เชิญคนถัดไป" (card taken, next please) and shows a new QR.
+- An unclaimed ticket expires after one minute; "เปลี่ยน QR" (new QR) replaces it at once. Of 30 phones pressing
+  "รับบัตร" on one ticket at the same moment, one gets the card.
+- The phone shows the card with **"บันทึกรูปบัตร"** (save card picture). The picture's QR opens the voter page again
+  on any phone. "เข้าร่วมกิจกรรม" (join) goes straight in, no code to type.
+- Keep a few printed cards for guests who cannot scan. Desk codes are not counted as printed cards.
+- **Staff must watch the desk.** A new QR appears as soon as a card is taken, so someone filming the desk with a
+  script could keep taking cards. Staff will see "card taken" with nobody there and the count jumping.
+
+A step-by-step guide for desk staff, in Thai, with pictures: [docs/checkin-guide.md](docs/checkin-guide.md).
+
+## Contestant intro and cheers
+
+On the "จอใหญ่" (big screen) tab, pick a topic and press "แนะนำตัว" (introduce). The big screen shows the first
+contestant; the main button reads "ถัดไป: 3 Name" (next: …), so the host knows who is next, with "ก่อนหน้า" (back).
+At the last contestant a "เปิดโหวต" (open voting) button appears; opening voting moves the big screen on to the vote
+counter and QR. Only contestants already introduced are sent to the big screen, so nobody can read ahead in the data.
+
+While the intro is on, guests get a **"เชียร์ขึ้นจอ"** (cheer on screen) button: six emoji (👏 ❤️ 😂 🔥 😮 🎉) that
+rise on the right of the big screen, and short messages (up to 60 characters) that slide across it. Leaving the intro
+clears the screen and the button disappears.
+
+- Messages show at once with no sender name. On the "เชียร์จากมือถือ" (cheers from phones) card the admin can turn
+  emoji or messages off, "ล้างจอ" (clear screen), hide one message, or block its sender (the sender is not told; their
+  messages just stop appearing). Admins can add their own blocked words; a basic list of rude words and all links are
+  blocked already.
+- Limits: 2 messages, then one every 10 seconds per guest; 12 emoji, then 3 a second; and a ceiling for the whole
+  room so the screen stays readable.
+- **Not kept.** Messages live in memory for a few seconds (the admin list holds the last 30) and are gone on restart.
+  Only the switches, the blocked words and blocked guests are saved.
+- A word list cannot catch every creative spelling. Someone should keep an eye on the admin card during the intro.
 
 ## Rules the server enforces
 
@@ -103,6 +205,7 @@ Gmail/SMTP sending against local stand-in mail servers: `node scripts/mail-test.
   topic closes.
 - Closed topics take no votes. Reopening a topic allows voting again.
 - Once anyone has voted, the entry method cannot change until votes are cleared.
+- Cheers are accepted only while the big screen is introducing contestants, and only from guests who have joined.
 - Ties share a place and appear together on screen with "คะแนนเท่ากัน" (tie). Places 1–3 on screen are the top three
   distinct vote counts; contestants with 0 votes are not placed.
 

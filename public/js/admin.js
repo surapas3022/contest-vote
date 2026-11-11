@@ -86,7 +86,8 @@ function renderLogin(err = '') {
       ${insecureBanner()}
       <div class="field"><label for="pw">รหัสผ่าน</label>
         <input id="pw" type="password" class="input" autocomplete="current-password" ${err ? 'aria-invalid="true" aria-describedby="pw-err"' : ''}>
-        ${err ? `<p class="field-error" id="pw-err">${icon('alert')}<span>${esc(err)}</span></p>` : ''}</div>
+        ${err ? `<p class="field-error" id="pw-err">${icon('alert')}<span>${esc(err)}</span></p>` : ''}
+        <p class="hint">คือค่า ADMIN_PASSWORD ที่ตั้งตอนเปิดเซิร์ฟเวอร์ ถ้าไม่ได้ตั้ง ระบบจะสุ่มรหัสชั่วคราวให้และแสดงในหน้าจอที่รันเซิร์ฟเวอร์ (เปลี่ยนใหม่ทุกครั้งที่เปิด) ถามคนที่เปิดเซิร์ฟเวอร์</p></div>
       <button class="btn btn-primary btn-block">เข้าสู่ระบบ</button>
     </form>`;
   $('#pw').focus();
@@ -124,9 +125,47 @@ function renderMain() {
   $('#ev-title').textContent = A.st.event.name;
   document.title = 'แอดมิน · ' + A.st.event.name;
   const y = window.scrollY;
-  main.innerHTML = insecureBanner() + ({ topics: tabTopics, screen: tabScreen, results: tabResults, settings: tabSettings })[A.tab]();
+  main.innerHTML = insecureBanner() + setupCard() + ({ topics: tabTopics, screen: tabScreen, results: tabResults, settings: tabSettings })[A.tab]();
   bind(main);
   window.scrollTo(0, y);
+}
+
+/* ---------- first-run checklist ---------- */
+// The server starts every event with this name; until it changes, step 1 is not done.
+const DEFAULT_EVENT_NAME = 'งานเลี้ยงปีใหม่';
+const SETUP_HIDDEN_KEY = 'cv_setup_hidden';
+
+function setupSteps(st) {
+  const mode = st.event.accessMode;
+  const entry = mode === 'code'
+    ? { done: st.codes.total + (st.mail.total || 0) + (st.desk?.handed || 0) > 0, text: 'สร้างรหัสสำหรับพิมพ์บัตร เพิ่มอีเมลที่จะส่งรหัส หรือเปิดจุดลงทะเบียนหน้างาน', now: `ตอนนี้ใช้ "รหัสโหวต" มีบัตร ${st.codes.total} ใบ` }
+    : mode === 'name'
+      ? { done: st.roster.count > 0, text: 'ใส่รายชื่อพนักงานที่มีสิทธิ์โหวต', now: `ตอนนี้ใช้ "กรอกชื่อ" มีรายชื่อ ${st.roster.count} คน` }
+      : { done: true, text: 'ไม่ต้องเตรียมอะไร', now: 'ตอนนี้ใช้ "ไม่ต้องกรอกอะไร" กันโหวตซ้ำไม่ได้' };
+  const ready = st.topics.filter((t) => t.contestants.length).length;
+  return [
+    { done: st.event.name !== DEFAULT_EVENT_NAME, title: 'ตั้งชื่องาน', text: 'ชื่อนี้ขึ้นบนจอใหญ่และหน้าโหวตของทุกคน', now: `ตอนนี้: ${st.event.name}`, tab: 'settings', focus: 'ev-name', go: 'ไปตั้งชื่อ' },
+    { done: entry.done, title: 'เลือกวิธีเข้าโหวต', text: `เลือกก่อนมีคนโหวต (เปลี่ยนทีหลังต้องล้างผล) แล้ว${entry.text}`, now: entry.now, tab: 'settings', focus: 'mode-box', go: 'ไปเลือก' },
+    { done: ready > 0, title: 'สร้างหัวข้อและเพิ่มผู้เข้าประกวด', text: 'แต่ละหัวข้อต้องมีผู้เข้าประกวดอย่างน้อย 1 คนถึงจะเปิดโหวตได้', now: `ตอนนี้มี ${st.topics.length} หัวข้อ พร้อมเปิด ${ready}`, tab: 'topics', focus: 'nt-title', go: 'ไปสร้างหัวข้อ' },
+  ];
+}
+
+function setupCard() {
+  if (localStorage.getItem(SETUP_HIDDEN_KEY)) return '';
+  const steps = setupSteps(A.st);
+  const left = steps.filter((x) => !x.done).length;
+  const item = (x, i) => `<li class="step ${x.done ? 'done' : ''}">
+      <span class="step-no" aria-hidden="true">${x.done ? icon('check') : i + 1}</span>
+      <span class="step-body"><b>${x.title}</b><span class="small muted">${x.done ? esc(x.now) : x.text}</span></span>
+      ${x.done ? '<span class="small step-ok">เสร็จแล้ว</span>' : `<button class="btn btn-sm" data-go-tab="${x.tab}" data-focus="${x.focus}">${x.go}${icon('chevronRight')}</button>`}</li>`;
+  return `<section class="card panel setup" aria-label="เริ่มต้นใช้งาน">
+    <div class="row"><h2>${left ? `เริ่มต้นใช้งาน · เหลืออีก ${left} ขั้น` : 'ตั้งค่าครบแล้ว'}</h2><span class="spacer"></span>
+      <button class="btn btn-ghost btn-sm" data-act="hide-setup">ซ่อนรายการนี้</button></div>
+    <ol class="steps">${steps.map(item).join('')}
+      <li class="step"><span class="step-no" aria-hidden="true">4</span>
+        <span class="step-body"><b>ซ้อมก่อนเริ่มจริง</b><span class="small muted">เปิดหน้าจอใหญ่ โหวตจากมือถือจริงสัก 2–3 เครื่อง แล้วกด "ล้างผลโหวตทั้งหมด" ในแท็บตั้งค่างาน</span></span>
+        <button class="btn btn-sm" data-go-tab="settings" data-focus="reset-box">ไปที่ล้างผล${icon('chevronRight')}</button></li>
+    </ol></section>`;
 }
 
 const errBanner = (area) => (A.errors[area] ? `<div class="banner banner-error" role="alert">${icon('alert')}<span>${esc(A.errors[area])}</span></div>` : '');
@@ -209,16 +248,22 @@ function tabScreen() {
   let ctl = '';
   if (t) {
     const canReveal = t.status === 'closed';
+    // a draft is only public during the intro; any other mode leaves the big screen on the QR page
+    const draft = t.status === 'draft';
     ctl = `<div class="card panel">
       <h2>${esc(t.title)}</h2>
       <p class="meta muted small">${statusBadge(t.status)} · โหวตแล้ว ${t.voters} คน</p>
       ${errBanner('screen')}
       <div class="seg" role="group" aria-label="สิ่งที่จอแสดง">
-        <button class="btn" data-act="mode" data-mode="hidden" aria-pressed="${s.mode === 'hidden'}">${icon('eyeOff')}ซ่อนคะแนน</button>
-        <button class="btn" data-act="mode" data-mode="live" aria-pressed="${s.mode === 'live'}">${icon('chart')}โชว์คะแนนสด</button>
+        <button class="btn" data-act="mode" data-mode="intro" aria-pressed="${s.mode === 'intro'}" ${t.contestants.length ? '' : 'disabled'}>${icon('users')}แนะนำตัว</button>
+        <button class="btn" data-act="mode" data-mode="hidden" aria-pressed="${!draft && s.mode === 'hidden'}" ${draft ? 'disabled' : ''}>${icon('eyeOff')}ซ่อนคะแนน</button>
+        <button class="btn" data-act="mode" data-mode="live" aria-pressed="${!draft && s.mode === 'live'}" ${draft ? 'disabled' : ''}>${icon('chart')}โชว์คะแนนสด</button>
         <button class="btn" data-act="mode" data-mode="reveal" aria-pressed="${s.mode === 'reveal'}" ${canReveal ? '' : 'disabled'}>${icon('trophy')}ประกาศผล</button>
       </div>
-      ${!canReveal ? `<div class="row"><p class="hint">ประกาศผลได้หลังปิดโหวต</p>${t.status === 'open' ? `<button class="btn btn-sm" data-act="status" data-id="${t.id}" data-to="closed">${icon('lock')}ปิดโหวตหัวข้อนี้</button>` : ''}</div>` : ''}
+      ${s.mode === 'intro' ? introControls(t, s) : ''}
+      ${draft && s.mode !== 'intro' ? `<div class="banner banner-warning">${icon('alert')}<span>หัวข้อนี้ยังไม่เปิดโหวต จอใหญ่จึงแสดงหน้ารวม (QR + ชื่องาน) อยู่ ตอนนี้ใช้ได้แค่ <b>แนะนำตัว</b> ซ่อนคะแนนและโชว์คะแนนสดใช้ได้หลังเปิดโหวต</span></div>
+        <div class="row"><button class="btn btn-primary btn-sm" data-act="status" data-id="${t.id}" data-to="open">เปิดโหวตหัวข้อนี้</button></div>` : ''}
+      ${s.mode !== 'intro' && !draft && !canReveal ? `<div class="row"><p class="hint">ประกาศผลได้หลังปิดโหวต</p>${t.status === 'open' ? `<button class="btn btn-sm" data-act="status" data-id="${t.id}" data-to="closed">${icon('lock')}ปิดโหวตหัวข้อนี้</button>` : ''}</div>` : ''}
       ${s.mode === 'reveal' ? revealControls(t, s) : ''}
     </div>`;
   }
@@ -230,7 +275,54 @@ function tabScreen() {
       <div class="radio-list">${opts.map((o) => `<label class="radio-opt"><input type="radio" name="screen-topic" value="${o.id}" ${(s.topicId || '') === o.id ? 'checked' : ''}>
         <span><b>${esc(o.title)}</b>${o.status ? `<span class="small muted">${statusBadge(o.status)}</span>` : ''}</span></label>`).join('')}</div>
     </div>
-    ${ctl}`;
+    ${ctl}
+    ${cheerCard()}`;
+}
+
+/* cheers: what phones send to float over the big screen. Messages are not kept: the list below is
+   only what the server still holds in memory (gone on restart). */
+function cheerCard() {
+  const c = A.st.cheer;
+  const hm = (ms) => new Date(ms).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const rows = c.recent.map((r) => `<li class="cheer-row ${r.hidden ? 'is-hidden' : ''}">
+      <span class="small muted">${hm(r.at)}</span><span class="cheer-v">${esc(r.v)}</span>
+      <span class="row">${r.hidden ? '<span class="badge badge-draft">ซ่อนแล้ว</span>' : `<button class="btn btn-sm" data-act="cheer-hide" data-id="${r.id}">${icon('eyeOff')}ซ่อน</button>`}
+      ${r.muted ? '<span class="badge badge-closed">บล็อกแล้ว</span>' : `<button class="btn btn-sm btn-ghost" data-act="cheer-mute" data-id="${r.id}">บล็อกคนส่ง</button>`}</span></li>`).join('');
+  return `<section class="card panel" id="cheer-box">
+    <h2>เชียร์จากมือถือ</h2>
+    <p class="hint">ระหว่างจอใหญ่อยู่โหมด <b>แนะนำตัว</b> คนโหวตจะเห็นปุ่ม "เชียร์ขึ้นจอ" กด emoji หรือพิมพ์ข้อความสั้น ๆ ให้ลอยผ่านจอ ขึ้นทันทีโดยไม่แสดงชื่อ ไม่ได้บันทึกเก็บไว้ (รีสตาร์ตเซิร์ฟเวอร์แล้วรายการด้านล่างหายหมด) · โหมดอื่นปุ่มจะหายไปเอง</p>
+    ${A.st.screen.mode === 'intro' ? '<p class="banner banner-info">' + icon('users') + '<span>ตอนนี้เปิดให้เชียร์อยู่</span></p>' : ''}
+    ${errBanner('cheer')}
+    <div class="seg" role="group" aria-label="เปิดปิดการเชียร์">
+      <button class="btn" data-act="cheer-set" data-k="emoji" aria-pressed="${c.emoji}">emoji: ${c.emoji ? 'เปิด' : 'ปิด'}</button>
+      <button class="btn" data-act="cheer-set" data-k="text" aria-pressed="${c.text}">ข้อความ: ${c.text ? 'เปิด' : 'ปิด'}</button>
+      <button class="btn" data-act="cheer-clear">${icon('x')}ล้างจอ</button>
+    </div>
+    <h3 class="small">ข้อความล่าสุด</h3>
+    ${rows ? `<ul class="cheer-list">${rows}</ul>` : '<p class="small muted">ยังไม่มีข้อความ</p>'}
+    ${c.muted ? `<div class="row"><p class="hint spacer">บล็อกไว้ ${c.muted} คน ข้อความของคนที่ถูกบล็อกไม่ขึ้นจอ (เจ้าตัวไม่รู้)</p><button class="btn btn-sm" data-act="cheer-unmute">ปลดบล็อกทั้งหมด</button></div>` : ''}
+    <details id="cheer-words-box" ${A.cheerWordsOpen ? 'open' : ''}><summary class="small muted" style="cursor:pointer">คำที่ไม่ให้ขึ้นจอ</summary>
+      <div class="field" style="margin-top:var(--sp-2)"><label for="cheer-words">เพิ่มคำเอง (คั่นด้วยจุลภาคหรือขึ้นบรรทัดใหม่)</label>
+        <textarea id="cheer-words" class="input" rows="3">${esc(c.words)}</textarea>
+        <p class="hint">มีคำหยาบพื้นฐานกันไว้ให้แล้ว และลิงก์ส่งขึ้นจอไม่ได้ ใส่ชื่อเล่นหรือคำที่ไม่อยากให้ขึ้นเพิ่มได้</p></div>
+      <button class="btn btn-sm" data-act="cheer-words">บันทึกคำ</button>
+    </details>
+  </section>`;
+}
+
+function introControls(t, s) {
+  const n = t.contestants.length;
+  const i = Math.min(s.introIndex || 0, n - 1);
+  const c = t.contestants[i];
+  const nx = t.contestants[i + 1];
+  const last = i === n - 1;
+  return `<div class="banner banner-info">${icon('users')}<span>จอแสดงคนที่ ${i + 1} จาก ${n}: <b>${esc(c.number)} ${esc(c.name)}</b></span></div>
+    <div class="row">
+      <button class="btn" data-act="intro" data-i="${i - 1}" ${i > 0 ? '' : 'disabled'}>${icon('chevronLeft')}ก่อนหน้า</button>
+      ${last ? '' : `<button class="btn btn-primary spacer" data-act="intro" data-i="${i + 1}">ถัดไป: ${esc(nx.number)} ${esc(nx.name)}${icon('chevronRight')}</button>`}
+    </div>
+    ${last ? `<div class="row"><p class="hint">แนะนำครบแล้ว${t.status === 'draft' ? ' เปิดโหวตได้เลย' : ''}</p>
+      ${t.status === 'draft' ? `<button class="btn btn-primary btn-sm" data-act="status" data-id="${t.id}" data-to="open">เปิดโหวต</button>` : ''}</div>` : ''}`;
 }
 
 function revealControls(t, s) {
@@ -294,6 +386,12 @@ function tabSettings() {
         ${st.codes.total ? `<button class="btn btn-danger" data-act="del-codes">${icon('trash')}ลบรหัสทั้งหมด</button>` : ''}
       </div>
     </section>
+    <section class="card panel" id="desk-box">
+      <h2>จุดลงทะเบียนหน้างาน <span class="muted small">(ไม่บังคับ)</span></h2>
+      <p class="hint">แทนการแจกบัตรกระดาษหรือส่งอีเมล: เปิดหน้านี้บนแท็บเล็ตหรือโน้ตบุ๊กที่โต๊ะลงทะเบียน (ไม่ใช่จอใหญ่) จอแสดง QR สำหรับรับบัตร แขกสแกนแล้วกด "รับบัตร" บนมือถือ จะได้บัตรโหวตพร้อมปุ่มบันทึกเป็นรูป QR บนจอเปลี่ยนเองหลังมีคนรับ และทุกนาทีถ้าไม่มีใครรับ · จอไม่แสดงรหัสโหวต · คนที่สแกนไม่ได้ให้ใช้บัตรกระดาษสำรอง</p>
+      <div class="row"><a class="btn" href="/checkin" target="_blank" rel="noopener">${icon('monitor')}เปิดหน้าจุดลงทะเบียน</a>
+        <span class="small muted">รับบัตรที่จุดลงทะเบียนแล้ว ${(st.desk?.handed || 0).toLocaleString('th-TH')} คน</span></div>
+    </section>
     ${mailBox(st)}` : '';
   if (st.event.accessMode === 'name' && A.rosterText === undefined) loadRoster();
   const rosterValue = A.rosterDraft ?? A.rosterText;
@@ -316,7 +414,8 @@ function tabSettings() {
     <form class="card panel" data-form="event" novalidate>
       <h2>ข้อมูลงาน</h2>
       ${errBanner('event')}
-      <div class="field"><label for="ev-name">ชื่องาน</label><input id="ev-name" name="name" class="input" maxlength="120" value="${esc(st.event.name)}"></div>
+      <div class="field"><label for="ev-name">ชื่องาน</label><input id="ev-name" name="name" class="input" maxlength="120" value="${esc(st.event.name)}" ${st.event.name === DEFAULT_EVENT_NAME ? 'aria-describedby="ev-name-hint"' : ''}>
+        ${st.event.name === DEFAULT_EVENT_NAME ? '<p class="hint" id="ev-name-hint">ยังเป็นชื่อที่ระบบตั้งไว้ให้ เปลี่ยนเป็นชื่องานจริงก่อนเปิดจอใหญ่</p>' : ''}</div>
       <div class="field"><label for="ev-url">ลิงก์ที่ QR พาไป (ไม่บังคับ)</label>
         <input id="ev-url" name="publicUrl" class="input" inputmode="url" value="${esc(st.event.publicUrl)}" placeholder="${esc(st.lanUrl)}">
         <p class="hint">เว้นว่าง = ใช้ที่อยู่ของเครื่องนี้ในวง Wi-Fi (${esc(st.lanUrl)}) มือถือต้องต่อ Wi-Fi วงเดียวกัน · ถ้าเอาขึ้นเว็บแล้วให้ใส่โดเมนจริง เช่น https://vote.example.com</p></div>
@@ -324,7 +423,7 @@ function tabSettings() {
       <div class="row end"><button class="btn btn-primary">บันทึกข้อมูลงาน</button></div>
     </form>
 
-    <section class="card panel">
+    <section class="card panel" id="mode-box">
       <h2>วิธีเข้าโหวต</h2>
       ${errBanner('mode')}
       ${locked ? `<div class="banner banner-warning">${icon('lock')}<span>มีโหวตแล้ว ${st.ballotCount.toLocaleString('th-TH')} รายการ จึงเปลี่ยนวิธีเข้าไม่ได้ ถ้าจะเปลี่ยนต้องล้างผลโหวตทั้งหมดก่อน (ด้านล่าง)</span></div>` : ''}
@@ -337,7 +436,7 @@ function tabSettings() {
     ${codeBox}
     ${rosterBox}
 
-    <section class="card panel">
+    <section class="card panel" id="reset-box">
       <h2>ล้างผลโหวต</h2>
       ${errBanner('reset')}
       <p class="small muted">ลบโหวตทุกหัวข้อและรายชื่อคนที่เข้าโหวต (หัวข้อ ผู้เข้าประกวด และรหัสโหวตยังอยู่) ใช้ตอนซ้อมเสร็จแล้วจะเริ่มงานจริง ย้อนกลับไม่ได้ — ดาวน์โหลด CSV เก็บไว้ก่อน</p>
@@ -363,9 +462,23 @@ function mailBox(st) {
   const draft = A.mailDraft ?? '';
   const n = (x) => x.toLocaleString('th-TH');
   const stat = (label, v, cls = '') => `<div><p class="small muted">${label}</p><p class="stat ${cls}">${n(v)}</p></div>`;
+  // Not set up and nothing added yet: keep it to one line so it does not read as a problem.
+  const folded = !m.configured && !m.total;
+  if (folded) {
+    return `<section class="card panel" id="mail-box">
+      <h2>ส่งรหัสทางอีเมล <span class="muted small">(ไม่บังคับ)</span></h2>
+      <p class="hint">ไม่ต้องใช้ถ้าแจกบัตรรหัส · ยังไม่ได้ตั้งค่าการส่งอีเมล</p>
+      <details id="mail-more" ${A.mailOpen ? 'open' : ''}><summary class="btn btn-sm">อยากส่งรหัสทางอีเมล</summary>
+        <div class="panel" style="padding:var(--sp-4) 0 0">${mailBoxBody(st, m, draft, n, stat)}</div></details>
+    </section>`;
+  }
   return `<section class="card panel" id="mail-box">
-    <h2>ส่งรหัสทางอีเมล</h2>
-    <p class="hint">ใช้แทนหรือใช้คู่กับบัตรก็ได้ ระบบให้รหัสคนละใบกับแต่ละอีเมล ในอีเมลมีปุ่มเข้าโหวตและ QR กดหรือสแกนแล้วเข้าโหวตได้เลยเหมือน QR บนบัตร</p>
+    <h2>ส่งรหัสทางอีเมล</h2>${mailBoxBody(st, m, draft, n, stat)}</section>`;
+}
+
+function mailBoxBody(st, m, draft, n, stat) {
+  return `
+<p class="hint">ใช้แทนหรือใช้คู่กับบัตรก็ได้ ระบบให้รหัสคนละใบกับแต่ละอีเมล ในอีเมลมีปุ่มเข้าโหวตและ QR กดหรือสแกนแล้วเข้าโหวตได้เลยเหมือน QR บนบัตร</p>
     ${errBanner('mail')}
     ${m.configured ? mailProviderBlock(m) : `<div class="banner banner-warning">${icon('alert')}<span>${esc(m.problem)} · ใส่ค่าในไฟล์ <code>.env</code> แล้วรันเซิร์ฟเวอร์ใหม่ (ดูหัวข้อ “ส่งรหัสทางอีเมล” ใน README) · เพิ่มรายชื่อไว้ก่อนได้</span></div>`}
     ${st.publicLink ? '' : `<div class="banner banner-warning">${icon('alert')}<span>ลิงก์ในอีเมลจะพาไป <b>${esc(st.voteUrl)}</b> ซึ่งเปิดได้เฉพาะมือถือที่ต่อ Wi-Fi วงเดียวกับเครื่องนี้ ถ้าจะให้คนเปิดจากที่ไหนก็ได้ ต้องเอาขึ้นเว็บแล้วใส่ลิงก์ https ในช่อง “ลิงก์ที่ QR พาไป” ด้านบนก่อนส่ง</span></div>`}
@@ -387,8 +500,7 @@ function mailBox(st) {
         <p class="hint">วางจาก Excel สองคอลัมน์ (ชื่อ กับ อีเมล) ได้เลย · อีเมลที่มีอยู่แล้วจะถูกข้าม · เพิ่มแล้วยังไม่ส่งทันที ต้องกดปุ่มส่งอีกที</p></div>
       <div class="row end"><button class="btn btn-primary">${icon('plus')}เพิ่มอีเมล</button></div>
     </form>
-    ${m.total ? mailListSection() : ''}
-  </section>`;
+    ${m.total ? mailListSection() : ''}`;
 }
 
 /** daily-limit room left, by this server's own count (Infinity when the service has no set limit) */
@@ -494,6 +606,15 @@ function mailTestDialog() {
 /* ---------- events ---------- */
 
 function bind(main) {
+  const cw = main.querySelector('#cheer-words-box');
+  if (cw) cw.addEventListener('toggle', () => { A.cheerWordsOpen = cw.open; });
+  main.querySelectorAll('[data-go-tab]').forEach((b) => b.addEventListener('click', () => {
+    A.tab = b.dataset.goTab; history.replaceState(null, '', '#tab=' + A.tab);
+    document.querySelectorAll('.tab').forEach((x) => x.setAttribute('aria-selected', x.dataset.tab === A.tab));
+    renderMain();
+    const el = document.getElementById(b.dataset.focus);
+    if (el) { el.scrollIntoView({ block: 'center' }); if (el.matches('input, textarea')) el.focus(); }
+  }));
   main.querySelectorAll('form[data-form]').forEach((f) => f.addEventListener('submit', onSubmit));
   main.querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', onAct));
   main.querySelectorAll('input[name=screen-topic]').forEach((r) => r.addEventListener('change', () =>
@@ -508,6 +629,8 @@ function bind(main) {
   }));
   const ta = main.querySelector('#roster');
   if (ta) ta.addEventListener('input', () => { A.rosterDraft = ta.value; });
+  const mm = main.querySelector('#mail-more');
+  if (mm) mm.addEventListener('toggle', () => { A.mailOpen = mm.open; });
   const mt = main.querySelector('#mail-text');
   if (mt) mt.addEventListener('input', () => { A.mailDraft = mt.value; });
   const mq = main.querySelector('#mail-q');
@@ -592,8 +715,22 @@ async function onAct(e) {
       if (ok) act(b, area, () => api('DELETE', `/api/admin/topics/${id}/contestants/${cid}`), 'ลบผู้เข้าประกวดแล้ว');
       break;
     }
+    case 'cheer-set':
+      act(b, 'cheer', () => api('PUT', '/api/admin/cheers', { [b.dataset.k]: !A.st.cheer[b.dataset.k] })); break;
+    case 'cheer-clear':
+      act(b, 'cheer', () => api('POST', '/api/admin/cheers/hide', { all: true }), 'ล้างจอแล้ว'); break;
+    case 'cheer-hide':
+      act(b, 'cheer', () => api('POST', '/api/admin/cheers/hide', { id: Number(b.dataset.id) })); break;
+    case 'cheer-mute':
+      act(b, 'cheer', () => api('POST', '/api/admin/cheers/mute', { id: Number(b.dataset.id) }), 'บล็อกแล้ว ข้อความของคนนี้จะไม่ขึ้นจออีก'); break;
+    case 'cheer-unmute':
+      act(b, 'cheer', () => api('DELETE', '/api/admin/cheers/mute'), 'ปลดบล็อกแล้ว'); break;
+    case 'cheer-words':
+      act(b, 'cheer', () => api('PUT', '/api/admin/cheers', { words: $('#cheer-words').value }), 'บันทึกคำแล้ว'); break;
     case 'mode':
       act(b, 'screen', () => api('PUT', '/api/admin/screen', { mode: b.dataset.mode })); break;
+    case 'intro':
+      act(b, 'screen', () => api('PUT', '/api/admin/screen', { introIndex: Number(b.dataset.i) })); break;
     case 'step':
       act(b, 'screen', () => api('PUT', '/api/admin/screen', { revealStep: Number(b.dataset.step) })); break;
     case 'del-codes': {
@@ -657,6 +794,7 @@ async function onAct(e) {
       if (ok) act(b, 'mail', () => api('DELETE', `/api/admin/mail/recipients/${id}`), 'ลบอีเมลแล้ว');
       break;
     }
+    case 'hide-setup': localStorage.setItem(SETUP_HIDDEN_KEY, '1'); renderMain(); break;
     case 'reset': {
       const ok = await confirmDialog({
         title: 'ล้างผลโหวตทั้งหมด?',

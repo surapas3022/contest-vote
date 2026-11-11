@@ -7,11 +7,12 @@ passed, which limits are accepted, and what has not been tested yet, so you can 
 
 | | |
 |---|---|
-| App version | 1.0.0 |
-| Checked on | 10 November 2026 |
-| Scanner | [ai-secure-audit](https://github.com/surapas3022/ai-secure-audit) 0.0.4 (run again on 11 November 2026; first run with 0.0.3): gitleaks 8.30.1 (keys and passwords in code and git history), osv-scanner 2.7.0 (libraries with known vulnerabilities, offline database) |
+| App version | 1.1.0 |
+| Checked on | 11 November 2026 (1.0.0 on 10 November 2026) |
+| Scanner | [ai-secure-audit](https://github.com/surapas3022/ai-secure-audit) 0.0.4: gitleaks 8.30.1 (keys and passwords in code and git history), osv-scanner 2.7.0 (libraries with known vulnerabilities, offline database) |
 | Scanner result | 0 findings |
-| Hand checks | 19 cheating attempts against a local copy, plus email and SMTP checks against local stand-in servers |
+| Dockerfile | hadolint: no errors (two warnings kept on purpose: `apk add openssl` is not pinned, so rebuilds get security fixes; the healthcheck uses shell form to read `$PORT`) |
+| Hand checks | 19 cheating attempts against a local copy; 20 registration-desk ticket checks; intro, cheer and admin-given-name checks; email and SMTP checks against local stand-in servers |
 
 Each new release is checked again before it is published. When ai-secure-audit adds a check, this page is updated with
 the new version and result.
@@ -37,6 +38,28 @@ the new version and result.
 | Making the app's QR generator point at another site | Ignored; QR always points at the event |
 | Security headers | Content-Security-Policy, X-Frame-Options, X-Content-Type-Options, Referrer-Policy present |
 
+## Registration desk, intro and cheers (new in 1.1.0)
+
+| Check | Result |
+|---|---|
+| Opening the desk without logging in, or from another website | Refused (401, 403) |
+| What the desk page receives | A QR picture only: no vote code, and the ticket is not in the data as text |
+| Empty, made-up or non-text tickets | Refused (410) |
+| 30 phones pressing "รับบัตร" (get card) on one ticket at the same moment | One card |
+| A used ticket, a ticket older than one minute, a ticket replaced with "เปลี่ยน QR" | Refused (410) |
+| Desk or claim when the event is not in code mode | Refused (409) |
+| Intro: what the big screen receives | Only contestants already introduced, no vote counts; a topic not yet open stays hidden from voters |
+| Moving the intro without logging in | Refused (401) |
+| Cheers without joining, outside the intro, or with an emoji outside the set of six | Refused (401, 409, 400) |
+| Rude words (also with spaces or symbols between letters), links, messages over 60 characters | Refused |
+| Line breaks and invisible direction characters in messages | Removed; HTML shows as plain text |
+| Sending messages or emoji too fast | Limited per guest and for the whole room (429) |
+| Sender identity on the big screen or in the admin list | Not sent |
+| Hidden messages and blocked senders | Gone from the screen; a blocked sender is not told |
+| Cheer messages written to `data/db.json` | Never |
+| A name the admin gave (email list) | Returned only to that guest, and cannot be changed from the phone; public data has no names or addresses |
+| Opening the voter page from a card picture | Read on the phone; nothing uploaded. The route serving the QR reader returns only that one file |
+
 ## Email
 
 | Check | Result |
@@ -58,6 +81,9 @@ Mail credentials are read from environment variables or `.env` only, never from 
 | 150 simulated phones on the same machine: open the page, scan, vote in two topics, a third change their mind | Every request succeeded, tally exact, all phones saw a closed topic within about 50 ms |
 | 200 simulated phones behind a Cloudflare Quick Tunnel | Every request succeeded (no 429), pages update every 1–2 seconds by polling |
 | https behind a proxy (`TRUST_PROXY=1`) | Admin cookie marked Secure; a faked `X-Forwarded-For` does not get around the rate limits |
+| Docker (Compose on macOS) | Runs as uid 1000; can write `/data` but not the app code; data survives restarts; `docker stop` saves and exits cleanly |
+| Per-address limits in Docker when the app sees each device's own address | A guesser is limited; the real admin from another address still logs in |
+| Through a Cloudflare Quick Tunnel in a web browser (11 November 2026) | Getting a card at the desk and saving its picture, the voter page and voting, the intro with cheers, opening from a card picture: all worked |
 
 ## Accepted limits
 
@@ -70,10 +96,21 @@ These are known and shown in the app. They are not bugs.
 - **"Sent" means the mail service accepted the email**, not that it reached the inbox.
 - **Admin over plain http on Wi-Fi sends the password unencrypted.** Use `HTTPS_PORT` or an https host (see the README).
 - **Personal data:** email addresses and names are stored in plain text in `data/db.json`. Delete them after the event.
+- **Someone filming the registration desk could keep taking cards.** A new ticket appears as soon as one is used, so a
+  phone pointed at the desk with a script could claim a card every few seconds. Desk staff are told to watch for
+  "card taken" with nobody at the desk. The alternative, staff pressing a button for every guest, was judged not worth
+  the slower queue.
+- **The cheer word list cannot catch every spelling.** Someone should watch the admin's cheer card during the intro and
+  hide or block.
+- **Docker Desktop (Mac, Windows) shows every phone as one address**, so per-address limits count the whole room
+  together. Docker on Linux and `npm start` see each phone's own address.
 
 ## Not tested yet
 
-- Real phones (all tests ran from one computer)
+- The share sheet on specific phones: "บันทึกรูปบัตร" (save card picture) on iPhone Safari and Android Chrome by name
+  (the tunnel test above did not record which phone was used)
+- Cheers with a full room (tested with 12 simulated guests)
+- Docker on a Linux server with a published port
 - Sending real email through Gmail, a company server or Brevo (only local stand-ins)
 - The self-signed `HTTPS_PORT` mode with real phones
 

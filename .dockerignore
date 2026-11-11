@@ -1,0 +1,9 @@
+# keep secrets, data and local installs out of the image
+.env
+.env.*
+!.env.example
+data
+node_modules
+.git
+*.pem
+docs

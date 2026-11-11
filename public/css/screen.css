@@ -83,3 +83,43 @@ body.stage { background: var(--stage-bg); color: var(--stage-text); overflow: hi
 .confetti i { position: absolute; top: -3vh; width: .8vw; height: 1.6vh; border-radius: 2px; animation: fall linear forwards; }
 @keyframes fall { to { transform: translateY(110vh) rotate(720deg); } }
 @media (prefers-reduced-motion: reduce) { .confetti { display: none; } }
+
+/* intro: one contestant at a time; the photo is the star, number and name sit on the left */
+.intro { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: minmax(0, 1fr); gap: 4vw; animation: intro-in 600ms var(--ease) both; }
+.intro.no-photo { grid-template-columns: minmax(0, 1fr); justify-items: center; text-align: center; }
+.i-photo { height: 100%; min-height: 0; aspect-ratio: 4 / 5; object-fit: cover; border-radius: var(--radius-card); outline: 3px solid var(--color-gold); outline-offset: 6px; margin: 6px; }
+.i-info { display: flex; flex-direction: column; justify-content: center; gap: 1vh; min-width: 0; }
+.i-lbl { font-size: 1.8vw; color: var(--stage-muted); font-weight: 600; }
+.i-no { font-size: 15vw; font-weight: 700; line-height: 1; color: var(--stage-bar); font-variant-numeric: tabular-nums; }
+.no-photo .i-no { font-size: 26vw; }
+.i-name { font-size: 3.4vw; font-weight: 700; line-height: 1.4; overflow-wrap: anywhere; }
+@keyframes intro-in { from { opacity: 0; transform: translateY(4vh); } }
+@media (prefers-reduced-motion: reduce) { .intro { animation: none; } }
+.i-strip { list-style: none; margin: 4vh 0 0; padding: 0; display: flex; gap: .8vw; flex-wrap: wrap; }
+.no-photo .i-strip { justify-content: center; }
+.i-strip li { width: 3.4vw; height: 3.4vw; border-radius: 8px; background: var(--stage-panel); overflow: hidden; display: grid; place-items: center; font-size: 1.2vw; font-weight: 700; color: var(--stage-muted); }
+.i-strip li img { width: 100%; height: 100%; object-fit: cover; }
+.i-strip li.done { opacity: .55; }
+.i-strip li.now { outline: 3px solid var(--color-gold); outline-offset: 2px; }
+.i-strip li.next { background: transparent; border: 2px dashed var(--stage-line); }
+.s-sub.nowrap { white-space: nowrap; }
+.compact .s-title { font-size: 2.4vw; }
+.compact .s-event { font-size: 1.3vw; }
+
+/* cheers from phones: above everything, never catch clicks */
+.cheers { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: var(--z-dialog); }
+.ch-e { position: absolute; bottom: -6vh; font-size: 4.2vw; line-height: 1; animation: ch-rise 3.4s ease-out forwards; }
+@keyframes ch-rise {
+  0% { transform: translate(0, 0) scale(.6); opacity: 0; }
+  12% { opacity: 1; transform: translate(0, -8vh) scale(1.1); }
+  100% { transform: translate(var(--dx, 0), -62vh) scale(1); opacity: 0; }
+}
+.ch-t { position: absolute; left: 0; white-space: nowrap; font-size: 2.4vw; font-weight: 700; line-height: 1.5; color: #fff;
+  background: rgba(20, 12, 11, .78); border: 2px solid rgba(232, 185, 49, .55); border-radius: 999px; padding: .4vh 1.6vw;
+  animation: ch-slide 11s linear forwards; }
+@keyframes ch-slide { from { transform: translateX(100vw); } to { transform: translateX(-100%); } }
+@media (prefers-reduced-motion: reduce) {
+  .ch-e { animation-name: ch-fade; bottom: 8vh; }
+  .ch-t { left: 3vw; animation: ch-fade 6s linear forwards; }
+  @keyframes ch-fade { 0%, 100% { opacity: 0; } 10%, 85% { opacity: 1; } }
+}

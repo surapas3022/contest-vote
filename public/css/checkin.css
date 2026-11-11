@@ -1,0 +1,21 @@
+/* Check-in desk: a tablet or laptop at the registration table, facing one guest at a time. Same stage as the big screen. */
+body { background: var(--stage-bg); color: var(--stage-text); min-height: 100vh; }
+.desk { min-height: 100vh; display: grid; place-items: center; padding: var(--sp-6) var(--sp-4); }
+.d-in { width: min(100%, 520px); display: grid; gap: var(--sp-4); justify-items: center; text-align: center; }
+.d-event { color: var(--stage-muted); font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+.d-title { font-size: var(--fs-28); line-height: 1.35; }
+.d-qr { width: min(78vw, 56vh, 360px); aspect-ratio: 1; background: #fff; padding: var(--sp-4); border-radius: var(--radius-card); }
+.d-qr svg { width: 100%; height: 100%; display: block; }
+.d-code { font-size: var(--fs-20); color: var(--stage-muted); line-height: 1.5; }
+.d-code b { color: var(--stage-bar); }
+.d-seq { display: inline-flex; gap: var(--sp-2); align-items: baseline; background: var(--stage-panel); border-radius: var(--radius-pill); padding: var(--sp-1) var(--sp-4); }
+.d-seq b { color: var(--stage-bar); font-size: var(--fs-20); font-variant-numeric: tabular-nums; }
+.d-done { display: grid; gap: var(--sp-3); justify-items: center; }
+.d-done .big { width: 120px; height: 120px; border-radius: 50%; display: grid; place-items: center; background: var(--stage-bar); color: var(--stage-bg); animation: pop var(--duration-base) var(--ease); }
+.d-done .big .icon { width: 72px; height: 72px; stroke-width: 3; }
+@keyframes pop { 0% { transform: scale(.6); } 70% { transform: scale(1.1); } 100% { transform: scale(1); } }
+.d-staff { display: flex; flex-wrap: wrap; gap: var(--sp-2); justify-content: center; align-items: center; color: var(--stage-muted); font-size: var(--fs-14); border-top: 1px solid var(--stage-line); padding-top: var(--sp-3); width: 100%; }
+.d-staff .btn { background: var(--stage-panel-2); border-color: var(--stage-line); color: var(--stage-text); }
+.d-staff .btn:hover { background: var(--stage-line); }
+.banner { background: var(--stage-panel); color: var(--stage-text); border: 1px solid var(--stage-line); text-align: left; }
+.banner .icon { color: var(--stage-danger); }

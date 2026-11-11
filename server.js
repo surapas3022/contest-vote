@@ -25,6 +25,10 @@ if (ENV_INFO) {
 }
 
 const PORT = Number(process.env.PORT) || 3000;
+// the address phones use to reach this server (QR codes, links). Needed in Docker, where the server
+// only sees the container's own address; on a plain machine the LAN address is found automatically.
+const PUBLIC_URL = String(process.env.PUBLIC_URL || '').trim().replace(/\/+$/, '');
+const IN_DOCKER = fs.existsSync('/.dockerenv');
 const HTTPS_PORT = Number(process.env.HTTPS_PORT) || 0;
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
 const DB_FILE = path.join(DATA_DIR, 'db.json');
@@ -68,11 +72,15 @@ const TRUST_PROXY = parseTrustProxy(process.env.TRUST_PROXY);
 function emptyDb() {
   return {
     event: { name: 'งานเลี้ยงปีใหม่', accessMode: 'code', publicUrl: '' },
-    screen: { topicId: null, mode: 'hidden', revealStep: 0 }, // mode: hidden | live | reveal
+    screen: { topicId: null, mode: 'hidden', revealStep: 0, introIndex: 0 }, // mode: hidden | intro | live | reveal
     topics: [],
     voters: {},   // id -> { id, kind, key, label, createdAt }   (name mode: key = "r:<rosterId>")
     sessions: {}, // voter token -> voterId
-    codes: {},    // CODE -> { createdAt, mail? }   (mail = recipient id: code sent by email, not printed)
+    codes: {},    // CODE -> { createdAt, mail?, desk? }   (mail = sent by email, desk = handed out at the check-in desk; neither is printed)
+    // cheers on the big screen: switches, the admin's extra blocked words, and muted voter ids.
+    // The messages themselves are never written to disk (see "cheers" below).
+    cheer: { emoji: true, text: true, words: '', muted: {} },
+    desk: { ticket: null, handed: 0 }, // check-in desk: the one-time ticket on screen now { t, exp }, and how many were claimed
     mail: { recipients: [], lastError: '' }, // email delivery of codes, see "email" below
     roster: [],   // name mode allow-list: [{ id, code, name }]
     ballots: {},  // topicId -> { voterId: [contestantId] }
@@ -127,6 +135,7 @@ function findTopic(id) { return db.topics.find((t) => t.id === id); }
 function totalBallots() { return Object.values(db.ballots).reduce((n, b) => n + Object.keys(b).length, 0); }
 
 function lanUrl() {
+  if (PUBLIC_URL) return PUBLIC_URL;
   for (const list of Object.values(os.networkInterfaces())) {
     for (const i of list || []) if (i.family === 'IPv4' && !i.internal) return `http://${i.address}:${PORT}`;
   }
@@ -139,8 +148,8 @@ function voteUrl() { return (db.event.publicUrl || lanUrl()).replace(/\/+$/, '')
 const normCode = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 16);
 /** signature printed in the QR of each card: lets QR scans in without going through the guess limiter */
 const codeSig = (code) => crypto.createHmac('sha256', db.secret).update('code:' + code).digest('base64url').slice(0, 16);
-/** printed cards = every code that was not handed out by email */
-const isCardCode = (code) => !!db.codes[code] && !db.codes[code].mail;
+/** printed cards = every code that was not handed out by email or at the check-in desk */
+const isCardCode = (code) => !!db.codes[code] && !db.codes[code].mail && !db.codes[code].desk;
 function newCode(extra = {}) {
   let code;
   do code = randomString(CODE_LENGTH, CODE_ALPHABET); while (db.codes[code]);
@@ -709,6 +718,7 @@ const pub = (c) => ({ id: c.id, number: c.number, name: c.name, photo: c.photo |
 function voterState() {
   return {
     event: { name: db.event.name, accessMode: db.event.accessMode },
+    cheer: { open: cheerOpen(), emoji: db.cheer.emoji, text: db.cheer.text, set: CHEER_EMOJI },
     voteUrl: voteUrl(),
     topics: db.topics
       .filter((t) => t.status !== 'draft')
@@ -720,6 +730,14 @@ function screenState() {
   const s = db.screen;
   const topic = s.topicId ? findTopic(s.topicId) : null;
   let screen = { topicId: topic ? topic.id : null, mode: s.mode, revealStep: s.revealStep };
+  if (topic && s.mode === 'intro') {
+    // the intro runs before voting opens, so the topic may still be a draft (drafts are otherwise never public).
+    // Only contestants already presented are sent: the next ones stay a surprise even to someone reading this API.
+    const n = topic.contestants.length;
+    const i = Math.min(s.introIndex || 0, Math.max(n - 1, 0));
+    screen.intro = { title: topic.title, total: n, index: i, shown: topic.contestants.slice(0, i + 1).map(pub) };
+    return { ...voterState(), screen, cheers: cheerFeed() };
+  }
   if (topic) {
     const t = tally(topic);
     screen.voters = t.voters;
@@ -731,7 +749,7 @@ function screenState() {
       screen.podium = p.filter((x) => x.place > 3 - s.revealStep);
     }
   }
-  return { ...voterState(), screen };
+  return { ...voterState(), screen, cheers: cheerFeed() };
 }
 
 function adminState() {
@@ -743,18 +761,74 @@ function adminState() {
     voteUrl: voteUrl(),
     httpsPort: httpsReady ? HTTPS_PORT : null,
     screen: db.screen,
+    cheer: {
+      emoji: db.cheer.emoji, text: db.cheer.text, words: db.cheer.words, muted: Object.keys(db.cheer.muted).length,
+      recent: cheerTexts.slice(-30).reverse().map((c) => ({ id: c.id, at: c.at, v: c.v, hidden: cheerHidden.has(c.id), muted: !!db.cheer.muted[c.voterId] })),
+    },
     topics: db.topics.map((t) => {
       const r = tally(t);
       return { ...t, voters: r.voters, results: r.sorted };
     }),
     // printed-card codes only; emailed codes are counted under mail
     codes: { total: Object.keys(db.codes).filter(isCardCode).length, used: [...usedCodes()].filter(isCardCode).length },
+    desk: { handed: db.desk.handed || 0 },
     mail: mailSummary(),
     publicLink: publicLink(),
     roster: { count: db.roster.length, unlistedWithVotes },
     voterCount: Object.keys(db.voters).length,
     ballotCount: totalBallots(),
   };
+}
+
+/* ---------------- cheers: text and emoji floating over the big screen ----------------
+ * Never written to disk: messages live in memory for a few seconds (and the last 30 texts for
+ * the admin's list) and are gone on restart. Only signed-in voters can send. Text shows at once,
+ * so the guards are: fixed emoji set, short text, no links, a blocked-word list, per-voter and
+ * room-wide rate limits, and the admin can hide a message, mute its sender or switch either off.
+ * A muted sender is not told; their messages just never reach the screen. */
+const CHEER_EMOJI = ['👏', '❤️', '😂', '🔥', '😮', '🎉'];
+const CHEER_TEXT_MAX = 60;
+const CHEER_FEED_MS = 8000; // how long a cheer stays in the polled snapshot (screen polls every ~2 s)
+const CHEER_WORDS = ['เหี้ย', 'ควย', 'สัส', 'สัด', 'เย็ด', 'หี', 'ส้นตีน', 'ไอ้สัตว์', 'fuck', 'shit', 'bitch'];
+const cheerLimits = {
+  emoji: bucket(12, 3),     // per voter: a burst of 12, then 3 a second
+  text: bucket(2, 1 / 10),  // per voter: 2, then 1 every 10 seconds
+  emojiAll: bucket(80, 30), // the whole room: the screen can only show so much
+  textAll: bucket(8, 1),
+};
+setInterval(() => { for (const l of Object.values(cheerLimits)) l.sweep(); }, 60 * 1000).unref();
+let cheerSeq = 0;
+const cheerRecent = []; // { id, at, k, v } everything shown in the last few seconds (for polling screens)
+const cheerOut = [];    // waiting for the next stream push
+const cheerTexts = [];  // last texts with their sender, for the admin list only
+const cheerHidden = new Set();
+
+// cheering is only open while the big screen is introducing contestants
+const cheerOpen = () => db.screen.mode === 'intro' && !!(db.screen.topicId && findTopic(db.screen.topicId));
+const cheerNorm = (s) => s.toLowerCase().normalize('NFC').replace(/[^a-z0-9\u0e00-\u0e7f]/g, '');
+function cheerTextError(v) {
+  if (!v) return 'พิมพ์ข้อความก่อน';
+  if ([...v].length > CHEER_TEXT_MAX) return `ข้อความยาวได้ไม่เกิน ${CHEER_TEXT_MAX} ตัวอักษร`;
+  if (/https?:|www\.|\.(com|net|org|co|th|io|ly|me|link)\b/i.test(v)) return 'ส่งลิงก์ขึ้นจอไม่ได้';
+  const n = cheerNorm(v);
+  const extra = db.cheer.words.split(/[\n,]/).map((w) => cheerNorm(w)).filter(Boolean);
+  if ([...CHEER_WORDS, ...extra].some((w) => n.includes(cheerNorm(w)))) return 'ข้อความนี้ขึ้นจอไม่ได้ ลองใช้คำอื่น';
+  return '';
+}
+function cheerFeed() {
+  const cut = Date.now() - CHEER_FEED_MS;
+  while (cheerRecent.length && cheerRecent[0].at < cut) cheerRecent.shift();
+  return { items: cheerRecent.filter((c) => !cheerHidden.has(c.id)), hidden: [...cheerHidden].slice(-50) };
+}
+function pushCheer(k, v, voterId) {
+  const c = { id: ++cheerSeq, at: Date.now(), k, v };
+  cheerRecent.push(c); cheerOut.push(c);
+  if (cheerOut.length > 200) cheerOut.splice(0, cheerOut.length - 200);
+  if (k === 't') {
+    cheerTexts.push({ ...c, voterId });
+    if (cheerTexts.length > 100) cheerTexts.splice(0, cheerTexts.length - 100);
+    dirty = true; gen++; // the admin list changes; nothing to save
+  }
 }
 
 /* ---------------- realtime (SSE) + plain snapshots ----------------
@@ -775,9 +849,10 @@ function changed() { dirty = true; gen++; save(); }
 const snapCache = {};
 function snapshotJson(key, build) {
   const c = snapCache[key]; const now = Date.now();
-  if (c && c.gen === gen && now - c.at < 2000) return c.json;
+  const v = key === 'screen' ? gen + ':' + cheerSeq : gen; // cheers change the screen without a db change
+  if (c && c.gen === v && now - c.at < 2000) return c.json;
   const json = JSON.stringify(build());
-  snapCache[key] = { gen, at: now, json };
+  snapCache[key] = { gen: v, at: now, json };
   return json;
 }
 /** no-cache = always revalidate; express adds an ETag, so an unchanged snapshot is a 304 */
@@ -792,6 +867,10 @@ function viaQuickTunnel(req) {
   return QUICK_TUNNEL_HOST.test(host);
 }
 setInterval(() => {
+  if (cheerOut.length) {
+    const batch = cheerOut.splice(0);
+    if (clients.screen.size) { const msg = `event: cheers\ndata: ${JSON.stringify(batch)}\n\n`; for (const res of clients.screen) res.write(msg); }
+  }
   if (!dirty) return;
   dirty = false;
   const vj = JSON.stringify(voterState());
@@ -857,7 +936,7 @@ app.use((req, res, next) => {
 });
 
 // admin pages and API must go over HTTPS when the HTTPS listener is on
-const ADMIN_PAGE = /^\/(admin|print)(\.html)?$/;
+const ADMIN_PAGE = /^\/(admin|print|checkin)(\.html)?$/;
 app.use((req, res, next) => {
   if (!httpsReady || req.secure) return next();
   const isApi = req.path.startsWith('/api/admin');
@@ -872,6 +951,9 @@ const jsonSmall = express.json({ limit: '16kb' });
 app.use((req, res, next) => (req.path.startsWith('/api/admin/') && adminSession(cookies(req).admin) ? jsonBig : jsonSmall)(req, res, next));
 
 app.use('/fonts/anuphan', express.static(path.join(__dirname, 'node_modules/@fontsource/anuphan'), { maxAge: '30d' }));
+// QR reader for "open from a card picture" (iPhone Safari has no built-in one); loaded only when that button is used
+const JSQR_FILE = path.join(__dirname, 'node_modules/jsqr/dist/jsQR.js');
+app.get('/vendor/jsQR.js', (req, res) => res.sendFile(JSQR_FILE, { maxAge: '30d' }));
 app.use('/uploads', express.static(UPLOAD_DIR, {
   maxAge: '365d', immutable: true,
   setHeaders: (res) => res.set('Content-Security-Policy', "default-src 'none'; sandbox"),
@@ -995,7 +1077,10 @@ app.get('/api/me', (req, res) => {
   const picks = {};
   for (const [tid, b] of Object.entries(db.ballots)) if (b[v.id]) picks[tid] = b[v.id];
   const label = v.kind === 'open' ? null : v.kind === 'name' ? rosterIndex().byId.get(v.key.slice(2)).name : v.label;
-  res.json({ label, picks });
+  // a name the admin gave this person (roster, or the email list) is fixed: the phone shows it and offers no edit
+  const r = v.kind === 'code' && db.codes[v.key]?.mail ? recipientById(db.codes[v.key].mail) : null;
+  const fixedName = v.kind === 'name' ? label : r ? (r.name || r.email) : null;
+  res.json({ label, fixedName, picks });
 });
 
 app.post('/api/vote', (req, res) => {
@@ -1012,6 +1097,34 @@ app.post('/api/vote', (req, res) => {
   else ballots[v.id] = picks;
   changed();
   res.json({ ok: true, picks });
+});
+
+app.post('/api/cheer', (req, res) => {
+  const v = voterFromReq(req);
+  if (!v) return fail(res, 401, 'กรุณาเข้าสู่ระบบโหวตใหม่');
+  if (!cheerOpen()) return fail(res, 409, 'เชียร์ได้ตอนแนะนำผู้เข้าประกวดบนจอใหญ่');
+  const b = req.body || {};
+  if (b.emoji !== undefined) {
+    if (!db.cheer.emoji) return fail(res, 409, 'แอดมินปิดการส่ง emoji อยู่');
+    const e = String(b.emoji);
+    if (!CHEER_EMOJI.includes(e)) return fail(res, 400, 'emoji นี้ส่งไม่ได้');
+    if (cheerLimits.emoji.wait(v.id)) return limited(res, cheerLimits.emoji.wait(v.id), 'ส่งถี่ไป รอ {s}');
+    cheerLimits.emoji.take(v.id);
+    if (db.cheer.muted[v.id] || cheerLimits.emojiAll.wait('*')) return res.json({ ok: true }); // room is full: drop quietly
+    cheerLimits.emojiAll.take('*');
+    pushCheer('e', e, v.id);
+    return res.json({ ok: true });
+  }
+  if (!db.cheer.text) return fail(res, 409, 'แอดมินปิดการส่งข้อความอยู่');
+  // one line: no control characters or line breaks, spaces collapsed
+  const text = String(b.text ?? '').replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2066-\u2069]/g, ' ').replace(/\s+/g, ' ').trim();
+  const err = cheerTextError(text);
+  if (err) return fail(res, 400, err);
+  if (cheerLimits.text.wait(v.id)) return limited(res, cheerLimits.text.wait(v.id), 'ส่งข้อความได้อีกครั้งใน {s}');
+  if (cheerLimits.textAll.wait('*')) return limited(res, cheerLimits.textAll.wait('*'), 'บนจอมีข้อความเยอะอยู่ ลองใหม่ใน {s}');
+  cheerLimits.text.take(v.id);
+  if (!db.cheer.muted[v.id]) { cheerLimits.textAll.take('*'); pushCheer('t', text, v.id); }
+  res.json({ ok: true });
 });
 
 /* ----- admin ----- */
@@ -1134,6 +1247,8 @@ app.put('/api/admin/topics/:id', (req, res) => {
     if (!['draft', 'open', 'closed'].includes(b.status)) return fail(res, 400, 'สถานะไม่ถูกต้อง');
     if (b.status === 'open' && topic.contestants.length === 0) return fail(res, 400, 'เพิ่มผู้เข้าประกวดก่อนเปิดโหวต');
     topic.status = b.status;
+    // voting opens right after the intro: the screen moves on to the counter and the QR
+    if (b.status === 'open' && db.screen.topicId === topic.id && db.screen.mode === 'intro') db.screen.mode = 'hidden';
     if (b.status !== 'closed' && db.screen.topicId === topic.id && db.screen.mode === 'reveal') {
       db.screen.mode = 'hidden'; db.screen.revealStep = 0;
     }
@@ -1157,7 +1272,7 @@ app.delete('/api/admin/topics/:id', (req, res) => {
   for (const c of topic.contestants) removePhoto(c.photo);
   db.topics = db.topics.filter((t) => t !== topic);
   delete db.ballots[topic.id];
-  if (db.screen.topicId === topic.id) db.screen = { topicId: null, mode: 'hidden', revealStep: 0 };
+  if (db.screen.topicId === topic.id) db.screen = { topicId: null, mode: 'hidden', revealStep: 0, introIndex: 0 };
   changed();
   res.json({ ok: true });
 });
@@ -1286,6 +1401,54 @@ app.delete('/api/admin/codes', (req, res) => {
   res.json(adminState());
 });
 
+/* check-in desk: a screen at the registration table shows a QR that is a one-time ticket, not a vote code.
+   The guest's phone opens /claim and only when they press "รับบัตร" does the server make a vote code for
+   them (its own pool, never printed). The ticket then dies and the desk shows the next one. A ticket nobody
+   claims expires, so a photo of the desk screen is worth nothing; the vote code itself is never on that screen.
+   Pressing a button (not just opening the link) also keeps link previews in camera or chat apps from using it. */
+const TICKET_MS = 60 * 1000;
+const deskTicketLink = (t) => `${voteUrl()}claim?t=${t}`;
+function deskTicket() {
+  const k = db.desk.ticket;
+  if (k && k.exp > Date.now()) return k;
+  db.desk.ticket = { t: token(), exp: Date.now() + TICKET_MS };
+  save();
+  return db.desk.ticket;
+}
+
+app.post('/api/admin/desk', async (req, res) => {
+  if (db.event.accessMode !== 'code') return fail(res, 409, 'จุดลงทะเบียนใช้ได้เฉพาะวิธีเข้าโหวตแบบ "รหัสโหวต" เปลี่ยนได้ที่แท็บตั้งค่างาน');
+  if ((req.body || {}).skip) db.desk.ticket = null;
+  const k = deskTicket();
+  res.json({
+    eventName: db.event.name,
+    handed: db.desk.handed || 0,
+    expiresIn: Math.max(0, k.exp - Date.now()),
+    // the ticket itself is never sent back to the page as text: only inside the QR
+    qr: await QRCode.toString(deskTicketLink(k.t), { type: 'svg', margin: 0, errorCorrectionLevel: 'M' }),
+  });
+});
+
+app.post('/api/desk/claim', async (req, res) => {
+  if (db.event.accessMode !== 'code') return fail(res, 409, 'ตอนนี้ไม่ได้ใช้บัตรรหัสโหวต ติดต่อเจ้าหน้าที่ที่จุดลงทะเบียน');
+  const k = db.desk.ticket;
+  const t = String((req.body || {}).t || '');
+  if (!k || !t || !safeEqual(t, k.t)) return fail(res, 410, 'QR นี้ใช้ไปแล้วหรือหมดอายุ สแกน QR ใหม่ที่จุดลงทะเบียน');
+  if (k.exp <= Date.now()) { db.desk.ticket = null; return fail(res, 410, 'QR นี้หมดอายุแล้ว สแกน QR ใหม่ที่จุดลงทะเบียน'); }
+  db.desk.ticket = null; // one claim per ticket
+  db.desk.handed = (db.desk.handed || 0) + 1;
+  const code = newCode({ desk: true });
+  const voter = getOrCreateVoter('code', code, code);
+  const vt = token();
+  db.sessions[vt] = voter.id;
+  changed();
+  const link = codeLink(voteUrl(), code);
+  res.json({
+    token: vt, eventName: db.event.name, code: fmtCode(code), link, no: db.desk.handed,
+    qr: await QRCode.toString(link, { type: 'svg', margin: 0, errorCorrectionLevel: 'M' }),
+  });
+});
+
 /* email */
 app.get('/api/admin/mail', (req, res) => {
   const used = usedCodes(); const url = voteUrl();
@@ -1372,10 +1535,14 @@ app.put('/api/admin/screen', (req, res) => {
   const s = { ...db.screen };
   if (b.topicId !== undefined) {
     if (b.topicId !== null && !findTopic(b.topicId)) return fail(res, 404, 'ไม่พบหัวข้อนี้');
-    if (b.topicId !== s.topicId) { s.topicId = b.topicId; s.mode = 'hidden'; s.revealStep = 0; }
+    if (b.topicId !== s.topicId) { s.topicId = b.topicId; s.mode = 'hidden'; s.revealStep = 0; s.introIndex = 0; }
   }
   if (b.mode !== undefined) {
-    if (!['hidden', 'live', 'reveal'].includes(b.mode)) return fail(res, 400, 'โหมดจอไม่ถูกต้อง');
+    if (!['hidden', 'intro', 'live', 'reveal'].includes(b.mode)) return fail(res, 400, 'โหมดจอไม่ถูกต้อง');
+    if (b.mode === 'intro') {
+      const t = s.topicId && findTopic(s.topicId);
+      if (!t || !t.contestants.length) return fail(res, 409, 'เพิ่มผู้เข้าประกวดก่อนเริ่มแนะนำตัว');
+    }
     if (b.mode === 'reveal') {
       const t = s.topicId && findTopic(s.topicId);
       if (!t || t.status !== 'closed') return fail(res, 409, 'ต้องปิดโหวตหัวข้อนี้ก่อนประกาศผล');
@@ -1387,9 +1554,46 @@ app.put('/api/admin/screen', (req, res) => {
     if (s.mode !== 'reveal') return fail(res, 409, 'กดประกาศผลก่อน');
     s.revealStep = Math.max(0, Math.min(3, Math.floor(Number(b.revealStep)) || 0));
   }
+  if (b.introIndex !== undefined) {
+    if (s.mode !== 'intro') return fail(res, 409, 'กดแนะนำตัวก่อน');
+    const n = findTopic(s.topicId).contestants.length;
+    s.introIndex = Math.max(0, Math.min(n - 1, Math.floor(Number(b.introIndex)) || 0));
+  }
   db.screen = s;
   changed();
   res.json(db.screen);
+});
+
+/* cheers */
+app.put('/api/admin/cheers', (req, res) => {
+  const b = req.body || {};
+  if (b.emoji !== undefined) db.cheer.emoji = !!b.emoji;
+  if (b.text !== undefined) db.cheer.text = !!b.text;
+  if (b.words !== undefined) db.cheer.words = String(b.words).slice(0, 2000);
+  changed();
+  res.json({ ok: true });
+});
+app.post('/api/admin/cheers/hide', (req, res) => {
+  const b = req.body || {};
+  // "all" also clears emoji in flight, so the screen is clean at once
+  const ids = b.all ? cheerRecent.map((c) => c.id).concat(cheerTexts.map((c) => c.id)) : [Number(b.id)];
+  for (const id of ids) cheerHidden.add(id);
+  while (cheerHidden.size > 500) cheerHidden.delete(cheerHidden.values().next().value);
+  changed();
+  res.json({ ok: true });
+});
+app.post('/api/admin/cheers/mute', (req, res) => {
+  const c = cheerTexts.find((x) => x.id === Number((req.body || {}).id));
+  if (!c) return fail(res, 404, 'ไม่พบข้อความนี้ (ข้อความเก่าถูกลบจากหน่วยความจำแล้ว)');
+  db.cheer.muted[c.voterId] = true;
+  for (const x of cheerTexts) if (x.voterId === c.voterId) cheerHidden.add(x.id);
+  changed();
+  res.json({ ok: true });
+});
+app.delete('/api/admin/cheers/mute', (req, res) => {
+  db.cheer.muted = {};
+  changed();
+  res.json({ ok: true });
 });
 
 /* reset */
@@ -1466,11 +1670,15 @@ function startHttps() {
 app.listen(PORT, () => {
   console.log(`เว็บโหวตพร้อมแล้ว
   คนโหวต : ${voteUrl()}
-  แอดมิน : http://localhost:${PORT}/admin
-  จอใหญ่  : http://localhost:${PORT}/screen`);
+  แอดมิน : ${PUBLIC_URL || 'http://localhost:' + PORT}/admin
+  จอใหญ่  : ${PUBLIC_URL || 'http://localhost:' + PORT}/screen`);
   if (!HTTPS_PORT && !TRUST_PROXY) {
     console.log('\n[!] หน้าแอดมินยังวิ่งแบบ http ไม่เข้ารหัส ใครอยู่ Wi-Fi วงเดียวกันดักรหัสแอดมินได้'
       + '\n    ตั้ง HTTPS_PORT=3443 เพื่อให้แอดมินเข้าผ่าน https (ดู README)\n');
+  }
+  if (IN_DOCKER && !PUBLIC_URL && !db.event.publicUrl) {
+    console.log('\n[!] รันใน Docker แต่ยังไม่ได้ตั้ง PUBLIC_URL: QR จะพาไปที่อยู่ภายใน container ซึ่งมือถือเข้าไม่ได้'
+      + '\n    ตั้ง PUBLIC_URL=http://<IP ของเครื่องนี้>:' + PORT + ' ใน .env หรือใส่ "ลิงก์ที่ QR พาไป" ในแท็บตั้งค่างาน\n');
   }
   startHttps();
   reportMailSetup();
