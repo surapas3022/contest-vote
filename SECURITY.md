@@ -9,7 +9,7 @@ passed, which limits are accepted, and what has not been tested yet, so you can 
 |---|---|
 | App version | 1.0.0 |
 | Checked on | 10 November 2026 |
-| Scanner | [ai-secure-audit](https://github.com/surapas3022/ai-secure-audit) 0.0.3: gitleaks 8.30.1 (keys and passwords in code and git history), osv-scanner 2.7.0 (libraries with known vulnerabilities, offline database) |
+| Scanner | [ai-secure-audit](https://github.com/surapas3022/ai-secure-audit) 0.0.4 (run again on 11 November 2026; first run with 0.0.3): gitleaks 8.30.1 (keys and passwords in code and git history), osv-scanner 2.7.0 (libraries with known vulnerabilities, offline database) |
 | Scanner result | 0 findings |
 | Hand checks | 19 cheating attempts against a local copy, plus email and SMTP checks against local stand-in servers |
 
