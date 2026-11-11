@@ -42,7 +42,7 @@ the new version and result.
 | Check | Result |
 |---|---|
 | Email routes without logging in | Refused (401) |
-| HTML or line breaks in names added to emails or headers | Escaped; line breaks removed from headers; no extra recipients |
+| HTML or line breaks in names added to emails or headers | Escaped; line breaks removed from headers; no extra recipients (re-checked over verified TLS on 11 November 2026) |
 | Email addresses visible on public pages | Not sent to voters or the big screen |
 | Deleting a wrong address | Its code stops working at once |
 | The "send a test" email | Carries a sample code that cannot vote |
@@ -75,8 +75,6 @@ These are known and shown in the app. They are not bugs.
 
 - Real phones (all tests ran from one computer)
 - Sending real email through Gmail, a company server or Brevo (only local stand-ins)
-- Header injection over a TLS SMTP connection after the latest SMTP fix (it passed before that fix, and the code that
-  removes line breaks did not change)
 - The self-signed `HTTPS_PORT` mode with real phones
 
 ## Reporting a vulnerability
