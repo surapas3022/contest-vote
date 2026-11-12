@@ -8,8 +8,8 @@ passed, which limits are accepted, and what has not been tested yet, so you can 
 | | |
 |---|---|
 | App version | 1.1.0 |
-| Checked on | 11 November 2026 (1.0.0 on 10 November 2026); scanner run again with 0.0.6 on 12 November 2026 |
-| Scanner | [ai-secure-audit](https://github.com/surapas3022/ai-secure-audit) 0.0.6: gitleaks 8.30.1 (keys and passwords in code and git history), osv-scanner 2.7.0 (libraries with known vulnerabilities, offline database), opengrep 1.33.1 with the kit's own rules (sign-in and join routes with no limit on repeats, vote routes that never check who is voting) |
+| Checked on | 11 November 2026 (1.0.0 on 10 November 2026); scanner run again with 0.0.7 on 12 November 2026 |
+| Scanner | [ai-secure-audit](https://github.com/surapas3022/ai-secure-audit) 0.0.7: gitleaks 8.30.1 (keys and passwords in code and git history), osv-scanner 2.7.0 (libraries with known vulnerabilities, offline database), opengrep 1.33.1 with the kit's own rules (sign-in and join routes with no limit on repeats, vote routes that never check who is voting) |
 | Scanner result | 0 findings |
 | Dockerfile | hadolint: no errors (two warnings kept on purpose: `apk add openssl` is not pinned, so rebuilds get security fixes; the healthcheck uses shell form to read `$PORT`) |
 | Hand checks | 19 cheating attempts against a local copy; 20 registration-desk ticket checks; intro, cheer and admin-given-name checks; email and SMTP checks against local stand-in servers |
